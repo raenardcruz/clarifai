@@ -30,7 +30,7 @@ func TranscribeWithSpeechmatics(filePath string, apiKey string, updateProgress f
 	config := map[string]interface{}{
 		"type": "transcription",
 		"transcription_config": map[string]interface{}{
-			"language":    "en",
+			"language":    "auto",
 			"diarization": "speaker",
 		},
 	}
