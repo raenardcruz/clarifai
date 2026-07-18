@@ -11,7 +11,7 @@ import './style.css' // Design system tokens and aesthetics
 import 'primeicons/primeicons.css'
 
 // Configure Axios defaults
-axios.defaults.baseURL = import.meta.env.VITE_API_URL || ''
+axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL || ''
 
 const app = createApp(App)
 const pinia = createPinia()
