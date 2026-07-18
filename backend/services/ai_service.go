@@ -6,13 +6,34 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 
 	"note-taker/backend/models"
 )
 
-const OllamaURL = "http://localhost:11434/api/generate"
 const OllamaModel = "gemma4:12b-mlx"
+
+func getOllamaURL(path string) string {
+	url := os.Getenv("OLLAMA_URL")
+	if url == "" {
+		url = os.Getenv("OLLAMA_HOST")
+	}
+	if url == "" {
+		url = "http://localhost:11434"
+	}
+	url = strings.TrimSuffix(url, "/")
+	if strings.Contains(url, "/api/") {
+		if strings.HasSuffix(url, "/api/generate") && path == "/api/tags" {
+			return strings.Replace(url, "/api/generate", "/api/tags", 1)
+		}
+		if strings.HasSuffix(url, "/api/tags") && path == "/api/generate" {
+			return strings.Replace(url, "/api/tags", "/api/generate", 1)
+		}
+		return url
+	}
+	return url + path
+}
 
 type OllamaRequest struct {
 	Model  string `json:"model"`
@@ -42,7 +63,7 @@ func getModelName() string {
 }
 
 func GetOllamaModels() ([]string, error) {
-	resp, err := http.Get("http://localhost:11434/api/tags")
+	resp, err := http.Get(getOllamaURL("/api/tags"))
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +111,7 @@ func GenerateCustomSummary(transcript string, prompt string) string {
 		return fmt.Sprintf("> [!ERROR]\n> Could not marshal request. Error: %v", err)
 	}
 
-	resp, err := http.Post(OllamaURL, "application/json", bytes.NewBuffer(jsonData))
+	resp, err := http.Post(getOllamaURL("/api/generate"), "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Sprintf("> [!ERROR]\n> Could not generate summary. Please check if Ollama is running.\n\nError details: %v", err)
 	}
@@ -136,7 +157,7 @@ func GenerateTitle(transcript string) string {
 		return "Meeting Note"
 	}
 
-	resp, err := http.Post(OllamaURL, "application/json", bytes.NewBuffer(jsonData))
+	resp, err := http.Post(getOllamaURL("/api/generate"), "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "Meeting Note"
 	}
@@ -201,7 +222,7 @@ func DetectSpeakers(transcript string, speakerLabels []string) map[string]string
 		return result
 	}
 
-	resp, err := http.Post(OllamaURL, "application/json", bytes.NewBuffer(jsonData))
+	resp, err := http.Post(getOllamaURL("/api/generate"), "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return result
 	}
