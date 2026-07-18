@@ -15,8 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"gorm.io/gorm"
 	"note-taker/backend/models"
+
+	"gorm.io/gorm"
 )
 
 func ProcessSpeechmaticsJob(jobID string, filePath string) {
@@ -129,7 +130,8 @@ func runSpeechmaticsPipeline(jobID, filePath, apiKey string, recording *models.R
 	config := map[string]interface{}{
 		"type": "transcription",
 		"transcription_config": map[string]interface{}{
-			"language":    "en",
+			"model":       "melia-1",
+			"language":    "multi",
 			"diarization": "speaker",
 		},
 	}
