@@ -96,11 +96,6 @@
                       <Sparkles size="20" class="text-tertiary" />
                       <h2 class="text-xl font-bold text-tertiary">Executive Summary</h2>
                     </div>
-                    <Button label="Print Summary" severity="secondary" size="small" @click="printSummary" class="no-print">
-                      <template #icon>
-                        <Printer size="14" class="mr-1" />
-                      </template>
-                    </Button>
                   </div>
                   <div class="markdown-content" v-html="parsedSummary"></div>
                 </div>
