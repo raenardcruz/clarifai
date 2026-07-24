@@ -339,7 +339,7 @@ func parseAndSaveSegments(results []interface{}, recording *models.Recording, db
 	}
 }
 
-func GenerateSummary(recordingID string) {
+func GenerateSummary(recordingID string, instruction string) {
 	db := models.GetDB()
 	var recording models.Recording
 	if err := db.Where("id = ?", recordingID).First(&recording).Error; err != nil {
@@ -351,6 +351,10 @@ func GenerateSummary(recordingID string) {
 	prompt := settings.ExecutiveSummaryPrompt
 	if prompt == "" {
 		prompt = "Summarize this."
+	}
+
+	if strings.TrimSpace(instruction) != "" {
+		prompt = fmt.Sprintf("%s\n\nSpecial Instruction / Focus Topics:\n%s", prompt, strings.TrimSpace(instruction))
 	}
 
 	models.GlobalJobsDB.Set(recordingID, models.JobStatus{
