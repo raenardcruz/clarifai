@@ -370,3 +370,196 @@ a:hover {
 .animate-pulse-slow {
   animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
+
+/* Print Utilities & Print Styles */
+.print-only {
+  display: none !important;
+}
+
+@media print {
+  @page {
+    margin: 15mm 20mm;
+    size: portrait;
+  }
+
+  /* Reset body and background */
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide UI elements & navigation non-relevant to printed summary */
+  .sidebar,
+  .topbar,
+  .logo-container,
+  .nav-menu,
+  .sidebar-footer,
+  .user-profile,
+  .search-container,
+  .header-section,
+  .title-row,
+  .breadcrumb,
+  .tabs-header,
+  .p-tablist,
+  .tab-actions,
+  .action-buttons,
+  .sidebar-backdrop,
+  .speechmatics-usage-footer,
+  .no-print,
+  .p-toast,
+  .p-dialog,
+  button,
+  a.no-underline {
+    display: none !important;
+  }
+
+  /* Hide scrollbars during print */
+  * {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+  }
+
+  ::-webkit-scrollbar,
+  *::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    background: transparent !important;
+  }
+
+  /* Reset layout containers and force overflow visible */
+  html,
+  body,
+  #app,
+  .app-container,
+  .main-content,
+  .page-content,
+  .recording-show-page-wrapper,
+  .recording-show-page,
+  .summary-view,
+  .summary-card,
+  .markdown-content {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
+  }
+
+  .print-only,
+  .print-header,
+  .print-footer {
+    display: none !important;
+  }
+
+  .summary-card {
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+
+  .screen-summary-header {
+    display: none !important;
+  }
+
+  .markdown-content {
+    font-size: 11pt;
+    line-height: 1.65;
+    color: #1e293b;
+  }
+
+  .markdown-content h1 {
+    font-size: 16pt;
+    font-weight: 700;
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+    color: #0f172a;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 0.4rem;
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  .markdown-content h2 {
+    font-size: 13pt;
+    font-weight: 700;
+    margin-top: 1.25rem;
+    margin-bottom: 0.5rem;
+    color: #1e293b;
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  .markdown-content h3 {
+    font-size: 11.5pt;
+    font-weight: 600;
+    margin-top: 1rem;
+    margin-bottom: 0.4rem;
+    color: #334155;
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  .markdown-content p {
+    margin-bottom: 0.85rem;
+    color: #334155;
+  }
+
+  .markdown-content ul, .markdown-content ol {
+    margin-bottom: 0.85rem;
+    padding-left: 1.5rem;
+  }
+
+  .markdown-content li {
+    margin-bottom: 0.4rem;
+    color: #334155;
+  }
+
+  .markdown-content strong {
+    color: #0f172a;
+    font-weight: 600;
+  }
+
+  .markdown-content blockquote {
+    border-left: 4px solid #4f46e5 !important;
+    background-color: #f8fafc !important;
+    padding: 0.6rem 1rem !important;
+    margin: 1rem 0 !important;
+    color: #475569 !important;
+    border-radius: 0 6px 6px 0;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .markdown-content code {
+    background-color: #f1f5f9 !important;
+    padding: 0.15rem 0.35rem;
+    border-radius: 4px;
+    font-size: 9.5pt;
+    color: #0f172a;
+  }
+
+  .markdown-content pre {
+    background-color: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    padding: 0.85rem !important;
+    border-radius: 8px;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}

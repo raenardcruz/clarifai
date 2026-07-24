@@ -319,20 +319,9 @@ func getSharedRecording(c *gin.Context) {
 	db := models.GetDB()
 
 	var recording models.Recording
-	if err := db.Preload("Segments").Where("id = ?", recordingID).First(&recording).Error; err != nil {
+	if err := db.Where("id = ?", recordingID).First(&recording).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Recording not found"})
 		return
-	}
-
-	segments := []gin.H{}
-	for _, s := range recording.Segments {
-		segments = append(segments, gin.H{
-			"id":      s.ID,
-			"start":   s.StartTime,
-			"end":     s.EndTime,
-			"speaker": s.Speaker,
-			"text":    s.Text,
-		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -342,7 +331,6 @@ func getSharedRecording(c *gin.Context) {
 		"created_at": recording.CreatedAt.Format(time.RFC3339),
 		"duration":   recording.Duration,
 		"summary_md": recording.SummaryMD,
-		"segments":   segments,
 	})
 }
 
@@ -387,6 +375,10 @@ func updateSegment(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Segment updated successfully"})
 }
 
+type SummarizeRequest struct {
+	Instruction string `json:"instruction"`
+}
+
 func triggerSummary(c *gin.Context) {
 	currentUser, err := getContextUser(c)
 	if err != nil {
@@ -408,7 +400,10 @@ func triggerSummary(c *gin.Context) {
 		return
 	}
 
-	go services.GenerateSummary(recordingID)
+	var req SummarizeRequest
+	_ = c.ShouldBindJSON(&req)
+
+	go services.GenerateSummary(recordingID, req.Instruction)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Summarization triggered"})
 }

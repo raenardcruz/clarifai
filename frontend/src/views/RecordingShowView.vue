@@ -39,9 +39,14 @@
                   <UserCheck size="14" v-if="!isIdentifyingSpeakers" class="mr-1" />
                 </template>
               </Button>
-              <Button v-if="activeTab === 'summary'" label="Regenerate" severity="secondary" size="small" @click="regenerateSummary" :loading="isGenerating">
+              <Button v-if="activeTab === 'summary'" label="Regenerate" severity="secondary" size="small" @click="openSummaryModal" :loading="isGenerating">
                 <template #icon>
                   <Wand2 size="14" v-if="!isGenerating" class="mr-1" />
+                </template>
+              </Button>
+              <Button v-if="activeTab === 'summary' && recording?.summary_md" label="Print" severity="secondary" size="small" @click="printSummary" class="no-print">
+                <template #icon>
+                  <Printer size="14" class="mr-1" />
                 </template>
               </Button>
               <a :href="`/api/recordings/${recording.id}/download/${activeTab}`" class="no-underline">
@@ -86,16 +91,23 @@
                   <p class="text-sm text-gray-500 max-w-sm">We're analyzing the conversation, capturing key topics, and drafting your summary.</p>
                 </div>
                 <div class="summary-card glass" v-else-if="recording.summary_md">
-                  <div class="flex items-center gap-2 mb-4">
-                    <Sparkles size="20" class="text-tertiary" />
-                    <h2 class="text-xl font-bold text-tertiary">Executive Summary</h2>
+                  <div class="flex items-center justify-between mb-4 screen-summary-header">
+                    <div class="flex items-center gap-2">
+                      <Sparkles size="20" class="text-tertiary" />
+                      <h2 class="text-xl font-bold text-tertiary">Executive Summary</h2>
+                    </div>
+                    <Button label="Print Summary" severity="secondary" size="small" @click="printSummary" class="no-print">
+                      <template #icon>
+                        <Printer size="14" class="mr-1" />
+                      </template>
+                    </Button>
                   </div>
                   <div class="markdown-content" v-html="parsedSummary"></div>
                 </div>
                 <div v-else class="text-center py-20 text-gray-500 flex flex-col items-center">
                   <Wand2 size="48" class="text-gray-300 mb-4" />
                   <p>No summary generated yet.</p>
-                  <Button label="Generate Summary" severity="primary" class="mt-4" @click="regenerateSummary" :disabled="isGenerating" />
+                  <Button label="Generate Summary" severity="primary" class="mt-4" @click="openSummaryModal" :disabled="isGenerating" />
                 </div>
               </div>
             </TabPanel>
@@ -104,6 +116,31 @@
       </div>
     </div>
     <SpeechmaticsUsage type="footer" />
+
+    <Dialog v-model:visible="showSummaryModal" modal header="Generate AI Summary" :style="{ width: '90vw', maxWidth: '600px' }">
+      <div class="flex flex-col gap-4 py-2">
+        <p class="text-sm text-gray-600">
+          Add optional special instructions or focus topics to append to the summary prompt.
+        </p>
+        <div class="flex flex-col gap-2">
+          <label for="special-instruction" class="font-semibold text-sm">Special Instructions (Optional)</label>
+          <Textarea
+            id="special-instruction"
+            v-model="specialInstruction"
+            rows="4"
+            placeholder="e.g. Focus on action items for the marketing team, key decision points, or specific meeting topics..."
+            class="w-full"
+            autoResize
+          />
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2 pt-2">
+          <Button label="Cancel" severity="secondary" @click="showSummaryModal = false" />
+          <Button label="Generate Summary" icon="pi pi-sparkles" severity="primary" @click="submitRegenerateSummary" :loading="isGenerating" />
+        </div>
+      </template>
+    </Dialog>
   </div>
   <div v-else class="flex justify-center items-center h-screen">
     <Loader2 class="animate-spin text-primary" size="40" />
@@ -117,9 +154,10 @@ import axios from 'axios'
 import moment from 'moment'
 import { marked } from 'marked'
 import { useToast } from 'primevue/usetoast'
-import { Calendar, Clock, Share2, Download, Wand2, Sparkles, Loader2, Pencil, Trash2, UserCheck } from '@lucide/vue'
+import { Calendar, Clock, Share2, Download, Wand2, Sparkles, Loader2, Pencil, Trash2, UserCheck, Printer } from '@lucide/vue'
 import { useIntervalFn, useClipboard, useTitle } from '@vueuse/core'
 import Button from 'primevue/button'
+import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Tabs from 'primevue/tabs'
@@ -137,6 +175,8 @@ const activeTab = ref('summary')
 const isGenerating = ref(false)
 const isIdentifyingSpeakers = ref(false)
 const editingSpeakerOrigName = ref('')
+const showSummaryModal = ref(false)
+const specialInstruction = ref('')
 
 const { copy } = useClipboard()
 const title = computed(() => recording.value ? `${recording.value.title} - ClarifAi` : 'ClarifAi')
@@ -265,12 +305,19 @@ const updateSegment = async (segment) => {
   }
 }
 
-const regenerateSummary = async () => {
+const openSummaryModal = () => {
+  showSummaryModal.value = true
+}
+
+const submitRegenerateSummary = async () => {
   isGenerating.value = true
+  showSummaryModal.value = false
   try {
-    await axios.post(`/api/recordings/${recording.value.id}/summarize`)
+    await axios.post(`/api/recordings/${recording.value.id}/summarize`, {
+      instruction: specialInstruction.value
+    })
     toast.add({ severity: 'info', summary: 'Summarization Started', detail: 'Checking progress automatically...', life: 5000 })
-    fetchData() // trigger immediate fetch and start polling if it goes to summarizing
+    fetchData()
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to start summarization.', life: 5000 })
   } finally {
@@ -303,6 +350,10 @@ const shareLink = () => {
   const url = `${window.location.origin}/share/${recording.value.id}`
   navigator.clipboard.writeText(url)
   toast.add({ severity: 'success', summary: 'Copied', detail: 'Public link copied to clipboard!', life: 3000 })
+}
+
+const printSummary = () => {
+  window.print()
 }
 
 // Helpers
