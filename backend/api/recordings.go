@@ -24,6 +24,29 @@ const DataDir = "data"
 
 func init() {
 	os.MkdirAll(DataDir, os.ModePerm)
+	go cleanupOrphanedTempChunks(2 * time.Hour)
+}
+
+func cleanupOrphanedTempChunks(maxAge time.Duration) {
+	tempBase := filepath.Join(DataDir, "temp_chunks")
+	entries, err := os.ReadDir(tempBase)
+	if err != nil {
+		return
+	}
+
+	now := time.Now()
+	for _, entry := range entries {
+		if entry.IsDir() {
+			dirPath := filepath.Join(tempBase, entry.Name())
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			if now.Sub(info.ModTime()) > maxAge {
+				os.RemoveAll(dirPath)
+			}
+		}
+	}
 }
 
 type SegmentUpdate struct {
@@ -48,6 +71,9 @@ func SetupRecordingsRoutes(router *gin.RouterGroup) {
 	authGroup.Use(AuthMiddleware(), RequireApprovedUser())
 	{
 		authGroup.POST("", uploadAudio)
+		authGroup.POST("/upload/init", initChunkedUpload)
+		authGroup.POST("/upload/chunk", uploadChunk)
+		authGroup.POST("/upload/complete", completeChunkedUpload)
 		authGroup.GET("", getRecordings)
 		authGroup.GET("/recent", getRecentRecordings)
 		authGroup.GET("/speechmatics-usage", getSpeechmaticsUsage)
@@ -114,6 +140,199 @@ func uploadAudio(c *gin.Context) {
 	go services.ProcessSpeechmaticsJob(jobID, filePath)
 
 	c.JSON(http.StatusOK, gin.H{"message": "File uploaded successfully", "job_id": jobID})
+}
+
+type InitUploadRequest struct {
+	Filename    string `json:"filename" binding:"required"`
+	TotalChunks int    `json:"total_chunks" binding:"required"`
+	FileSize    int64  `json:"file_size"`
+}
+
+type CompleteUploadRequest struct {
+	UploadID    string `json:"upload_id" binding:"required"`
+	Filename    string `json:"filename" binding:"required"`
+	TotalChunks int    `json:"total_chunks" binding:"required"`
+}
+
+func initChunkedUpload(c *gin.Context) {
+	_, err := getContextUser(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	db := models.GetDB()
+	var settings models.Settings
+	db.First(&settings)
+
+	if settings.SpeechmaticsAPIKey == nil || *settings.SpeechmaticsAPIKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Speechmatics API key is not configured. Please set it in Settings."})
+		return
+	}
+
+	var req InitUploadRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Invalid request parameters"})
+		return
+	}
+
+	if req.TotalChunks <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Total chunks must be greater than 0"})
+		return
+	}
+
+	uploadID := uuid.New().String()
+	tempDir := filepath.Join(DataDir, "temp_chunks", uploadID)
+	if err := os.MkdirAll(tempDir, os.ModePerm); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Could not create chunk session"})
+		return
+	}
+
+	go cleanupOrphanedTempChunks(2 * time.Hour)
+
+	c.JSON(http.StatusOK, gin.H{
+		"upload_id": uploadID,
+	})
+}
+
+func uploadChunk(c *gin.Context) {
+	_, err := getContextUser(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	uploadID := c.PostForm("upload_id")
+	chunkIndexStr := c.PostForm("chunk_index")
+	if uploadID == "" || chunkIndexStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "upload_id and chunk_index are required"})
+		return
+	}
+
+	if _, err := uuid.Parse(uploadID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Invalid upload_id format"})
+		return
+	}
+
+	chunkIndex, err := strconv.Atoi(chunkIndexStr)
+	if err != nil || chunkIndex < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Invalid chunk_index"})
+		return
+	}
+
+	file, err := c.FormFile("chunk")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Chunk file is required"})
+		return
+	}
+
+	tempDir := filepath.Join(DataDir, "temp_chunks", uploadID)
+	if _, err := os.Stat(tempDir); os.IsNotExist(err) {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Upload session not found or expired"})
+		return
+	}
+
+	chunkFilePath := filepath.Join(tempDir, fmt.Sprintf("chunk_%d", chunkIndex))
+	if err := c.SaveUploadedFile(file, chunkFilePath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Could not save chunk"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":     "Chunk uploaded successfully",
+		"chunk_index": chunkIndex,
+	})
+}
+
+func completeChunkedUpload(c *gin.Context) {
+	currentUser, err := getContextUser(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	var req CompleteUploadRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Invalid request parameters"})
+		return
+	}
+
+	if _, err := uuid.Parse(req.UploadID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Invalid upload_id format"})
+		return
+	}
+
+	tempDir := filepath.Join(DataDir, "temp_chunks", req.UploadID)
+	if _, err := os.Stat(tempDir); os.IsNotExist(err) {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Upload session not found"})
+		return
+	}
+
+	// Ensure all chunk files exist
+	for i := 0; i < req.TotalChunks; i++ {
+		chunkPath := filepath.Join(tempDir, fmt.Sprintf("chunk_%d", i))
+		if _, err := os.Stat(chunkPath); os.IsNotExist(err) {
+			c.JSON(http.StatusBadRequest, gin.H{"detail": fmt.Sprintf("Missing chunk %d", i)})
+			return
+		}
+	}
+
+	// Stitch chunks together
+	jobID := uuid.New().String()
+	cleanFilename := filepath.Base(req.Filename)
+	if cleanFilename == "." || cleanFilename == "/" {
+		cleanFilename = "audio_recording"
+	}
+	filePath := filepath.Join(DataDir, fmt.Sprintf("%s_%s", jobID, cleanFilename))
+
+	destFile, err := os.Create(filePath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Could not create merged file"})
+		return
+	}
+
+	for i := 0; i < req.TotalChunks; i++ {
+		chunkPath := filepath.Join(tempDir, fmt.Sprintf("chunk_%d", i))
+		chunkFile, err := os.Open(chunkPath)
+		if err != nil {
+			destFile.Close()
+			os.Remove(filePath)
+			c.JSON(http.StatusInternalServerError, gin.H{"detail": fmt.Sprintf("Could not read chunk %d", i)})
+			return
+		}
+		_, err = io.Copy(destFile, chunkFile)
+		chunkFile.Close()
+		if err != nil {
+			destFile.Close()
+			os.Remove(filePath)
+			c.JSON(http.StatusInternalServerError, gin.H{"detail": fmt.Sprintf("Could not append chunk %d", i)})
+			return
+		}
+	}
+	destFile.Close()
+
+	// Clean up temp directory
+	os.RemoveAll(tempDir)
+
+	db := models.GetDB()
+	recording := models.Recording{
+		ID:        jobID,
+		UserID:    currentUser.ID,
+		Title:     cleanFilename,
+		Filename:  cleanFilename,
+		AudioPath: filePath,
+		Status:    "pending",
+	}
+
+	if err := db.Create(&recording).Error; err != nil {
+		os.Remove(filePath)
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Could not save recording record"})
+		return
+	}
+
+	go services.ProcessSpeechmaticsJob(jobID, filePath)
+
+	c.JSON(http.StatusOK, gin.H{"message": "File uploaded and stitched successfully", "job_id": jobID})
 }
 
 func getRecordings(c *gin.Context) {
