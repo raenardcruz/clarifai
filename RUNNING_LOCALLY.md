@@ -29,11 +29,12 @@ go run main.go
 ```
 
 #### Option B: Running with Docker
-Run the pre-built container by mapping the host port and loading your `.env` configuration file:
+Run the pre-built container by mapping the host port, loading your `.env` configuration file, and mounting a persistent volume for uploaded audio chunks and stitched recordings:
 ```bash
 cd backend
-docker run -p 8000:8000 --env-file .env note-taker-backend
+docker run -p 8000:8000 --env-file .env -v note_taker_data:/app/data note-taker-backend
 ```
+*(Or mount a local host directory: `docker run -p 8000:8000 --env-file .env -v $(pwd)/data:/app/data note-taker-backend`)*
 
 The backend server will run on [http://localhost:8000](http://localhost:8000).
 

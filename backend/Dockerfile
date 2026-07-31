@@ -36,5 +36,8 @@ EXPOSE 8000
 ENV PORT=8000
 ENV GIN_MODE=release
 
+# Declare volume for persistent recordings and chunk storage
+VOLUME /app/data
+
 # Run the backend binary
 CMD ["./note-taker-backend"]

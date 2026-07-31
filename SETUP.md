@@ -58,8 +58,12 @@ You can build a Docker image for the backend. The Docker image automatically bun
    docker build -t note-taker-backend .
    ```
 
-2. **Prepare Environment Variables**:
-   You can pass the same environment variables defined in the `.env` file when running the container (see the [Running Locally Guide](RUNNING_LOCALLY.md) for details).
+2. **Prepare Environment Variables & Data Volume**:
+   You can pass the same environment variables defined in the `.env` file when running the container, and mount a Docker volume at `/app/data` to persist temporary audio chunks and merged recordings across container restarts:
+   ```bash
+   docker run -p 8000:8000 --env-file .env -v note_taker_data:/app/data note-taker-backend
+   ```
+   *(See the [Running Locally Guide](RUNNING_LOCALLY.md) for further details).*
 
 ---
 
