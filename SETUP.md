@@ -47,23 +47,42 @@ Before setting up the project, ensure you have the following installed on your m
      ```
    * *Note: Speechmatics API key can be configured directly through the Settings UI once the application is running.*
 
-### Option B: Docker Setup (Recommended for simple deployment)
-
-You can build a Docker image for the backend. The Docker image automatically bundles the compiled Go binary along with its external tool dependencies (like `ffmpeg`).
+### Option B: Docker Setup (Recommended for containerized deployment)
 
 1. **Build the Docker Image**:
-   Navigate to the `backend` directory and run:
+   Whenever backend source code is created or updated, rebuild the image:
    ```bash
    cd backend
    docker build -t note-taker-backend .
    ```
 
-2. **Prepare Environment Variables & Data Volume**:
-   You can pass the same environment variables defined in the `.env` file when running the container, and mount a Docker volume at `/app/data` to persist temporary audio chunks and merged recordings across container restarts:
-   ```bash
-   docker run -p 8000:8000 --env-file .env -v note_taker_data:/app/data note-taker-backend
-   ```
-   *(See the [Running Locally Guide](RUNNING_LOCALLY.md) for further details).*
+2. **Run the Container**:
+   Pass environment variables and mount a Docker volume at `/app/data` to persist audio recordings and temporary chunks.
+
+   - **Connecting to local PostgreSQL and Ollama on Mac/Host**:
+     Use `host.docker.internal` so the container can reach services running on your host machine:
+     ```bash
+     docker run -p 8000:8000 \
+       -e POSTGRES_HOST=host.docker.internal \
+       -e OLLAMA_URL=http://host.docker.internal:11434 \
+       --env-file .env \
+       -v note_taker_data:/app/data \
+       note-taker-backend
+     ```
+
+   - **Custom Host Port (e.g. `8084`)**:
+     ```bash
+     docker run -p 8084:8000 \
+       -e POSTGRES_HOST=host.docker.internal \
+       -e OLLAMA_URL=http://host.docker.internal:11434 \
+       --env-file .env \
+       -v note_taker_data:/app/data \
+       note-taker-backend
+     ```
+     > [!IMPORTANT]
+     > If host port `8084` is used, ensure `frontend/vite.config.js` proxy target points to `http://localhost:8084` or set `VITE_API_BASE_URL=http://localhost:8084` in `frontend/.env`.
+
+   *(See [RUNNING_LOCALLY.md](RUNNING_LOCALLY.md) for full detailed guide).*
 
 ---
 

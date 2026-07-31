@@ -29,14 +29,43 @@ go run main.go
 ```
 
 #### Option B: Running with Docker
-Run the pre-built container by mapping the host port, loading your `.env` configuration file, and mounting a persistent volume for uploaded audio chunks and stitched recordings:
-```bash
-cd backend
-docker run -p 8000:8000 --env-file .env -v note_taker_data:/app/data note-taker-backend
-```
-*(Or mount a local host directory: `docker run -p 8000:8000 --env-file .env -v $(pwd)/data:/app/data note-taker-backend`)*
 
-The backend server will run on [http://localhost:8000](http://localhost:8000).
+> [!IMPORTANT]
+> **Always rebuild the Docker image after changing backend code!**
+> Docker containers run static compiled binaries. If you modify any backend files (like API routes or services), you must rebuild the image first.
+
+1. **Build (or rebuild) the Docker image**:
+   ```bash
+   cd backend
+   docker build -t note-taker-backend .
+   ```
+
+2. **Run the container**:
+   - **Default Port (`8000`)**:
+     ```bash
+     docker run -p 8000:8000 \
+       -e POSTGRES_HOST=host.docker.internal \
+       -e OLLAMA_URL=http://host.docker.internal:11434 \
+       --env-file .env \
+       -v note_taker_data:/app/data \
+       note-taker-backend
+     ```
+   - **Custom Host Port (e.g., `8084`)**:
+     Map host port `8084` to container port `8000` (`-p 8084:8000`). Make sure `PORT` in `.env` is omitted or set to `8000` inside the container:
+     ```bash
+     docker run -p 8084:8000 \
+       -e POSTGRES_HOST=host.docker.internal \
+       -e OLLAMA_URL=http://host.docker.internal:11434 \
+       --env-file .env \
+       -v note_taker_data:/app/data \
+       note-taker-backend
+     ```
+     *(Note: If you run the backend on port `8084`, update `frontend/vite.config.js` proxy target to `http://localhost:8084` or set `VITE_API_BASE_URL=http://localhost:8084` in `frontend/.env`).*
+
+> [!NOTE]
+> **Why `host.docker.internal`?** Inside Docker containers, `localhost` refers to the container itself. Passing `-e POSTGRES_HOST=host.docker.internal` and `-e OLLAMA_URL=http://host.docker.internal:11434` allows the container to connect to PostgreSQL and Ollama running on your Mac/host machine.
+
+The backend server will run on [http://localhost:8000](http://localhost:8000) (or your chosen host port).
 
 ---
 
