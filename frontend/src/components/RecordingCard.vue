@@ -27,10 +27,6 @@
             <Eye size="15" />
             <span>View Details</span>
           </router-link>
-          <button @click.stop="toggleMedicalFlag" class="apple-dropdown-item">
-            <Stethoscope size="15" />
-            <span>{{ recording.is_medical ? 'Unmark Medical' : 'Mark as Medical' }}</span>
-          </button>
           <a :href="`/api/recordings/${recording.id}/download/transcript`" class="apple-dropdown-item" v-if="isReady">
             <FileText size="15" />
             <span>Download Transcript</span>
@@ -134,22 +130,6 @@ const showMenu = ref(false)
 const toggleMenu = () => { showMenu.value = !showMenu.value }
 const closeMenu = () => { showMenu.value = false }
 
-const toggleMedicalFlag = async () => {
-  try {
-    const updated = !props.recording.is_medical
-    await axios.patch(`/api/recordings/${props.recording.id}`, { is_medical: updated })
-    props.recording.is_medical = updated
-    toast.add({
-      severity: 'success',
-      summary: updated ? 'Medical Flag Set' : 'Medical Flag Removed',
-      detail: updated ? 'Marked as medical conversation.' : 'Medical flag removed.',
-      life: 3000
-    })
-    emit('refresh')
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to update medical flag.', life: 4000 })
-  }
-}
 
 
 const deleteRecording = async () => {

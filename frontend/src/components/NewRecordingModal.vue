@@ -60,11 +60,14 @@
         </div>
       </div>
 
-      <!-- Medical Conversation Flag Toggle Option -->
+      <!-- Medical Conversation Flag Toggle Option (set at beginning before recording or upload) -->
       <div 
         class="medical-option-card" 
-        :class="{ 'is-medical-active': isMedical }" 
-        @click="isMedical = !isMedical"
+        :class="{ 
+          'is-medical-active': isMedical,
+          'is-disabled': isRecording || isUploading 
+        }" 
+        @click="(!isRecording && !isUploading) && (isMedical = !isMedical)"
       >
         <div class="medical-option-left">
           <div class="medical-icon-badge">
@@ -76,11 +79,15 @@
               <span class="medical-pill-tag">Clinical SOAP</span>
             </div>
             <p class="medical-desc">
-              Optimizes speech recognition for medical vocabulary and formats notes into a structured clinical SOAP summary.
+              Optimizes speech recognition for medical vocabulary and formats notes into a structured clinical SOAP summary. Must be set prior to starting recording or upload.
             </p>
           </div>
         </div>
-        <div class="apple-toggle-switch" :class="{ checked: isMedical }" @click.stop="isMedical = !isMedical">
+        <div 
+          class="apple-toggle-switch" 
+          :class="{ checked: isMedical, disabled: isRecording || isUploading }" 
+          @click.stop="(!isRecording && !isUploading) && (isMedical = !isMedical)"
+        >
           <span class="switch-handle"></span>
         </div>
       </div>
@@ -562,6 +569,12 @@ const uploadFile = async (file) => {
 .medical-option-card.is-medical-active {
   background: rgba(16, 185, 129, 0.07);
   border-color: rgba(16, 185, 129, 0.5);
+}
+
+.medical-option-card.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .medical-option-left {
