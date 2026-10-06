@@ -9,9 +9,10 @@ This document details the system architecture, file structure, and technical com
 The system uses a decoupled, three-tier architecture:
 
 1. **Frontend**: A modern, single-page application built with **Vue 3** and **Vite**. It handles audio uploads, polls the API for job updates, and renders the interactive job lists.
-2. **Backend**: A **Go** web server using the **Gin** framework. It exposes RESTful API endpoints for user authentication, settings configuration, file uploads, and retrieving recordings. It manages asynchronous background goroutines for audio processing.
-3. **Database**: **PostgreSQL** is utilized via **GORM** to store user information, app settings, recording metadata, and transcript segments.
-4. **AI Pipeline**:
+2. **iOS App & Mobile Architecture**: Powered by **Capacitor iOS** with a native Swift audio plugin (`NativeAudioRecorderPlugin.swift`). Configured with `UIBackgroundModes: ["audio"]` and `AVAudioSessionCategoryPlayAndRecord` to enable continuous recording even when the iPhone sleeps or apps are switched. Uses an **offline-first** pipeline storing audio locally before streaming chunks to the backend upon network reconnection.
+3. **Backend**: A **Go** web server using the **Gin** framework. It exposes RESTful API endpoints for user authentication, settings configuration, chunked file uploads, and retrieving recordings. It manages asynchronous background goroutines for audio processing.
+4. **Database**: **PostgreSQL** is utilized via **GORM** to store user information, app settings, recording metadata, and transcript segments.
+5. **AI Pipeline**:
    - **Speechmatics API**: Cloud-based service for speech-to-text transcription and integrated speaker diarization.
    - **Ollama**: Local LLM endpoint for meeting summarization and action item generation.
 

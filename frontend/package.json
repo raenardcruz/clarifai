@@ -9,6 +9,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/filesystem": "^8.1.4",
+    "@capacitor/ios": "^8.5.2",
+    "@capacitor/network": "^8.0.1",
+    "@capacitor/preferences": "^8.0.1",
     "@lucide/vue": "^1.24.0",
     "@primevue/themes": "^4.5.4",
     "@vueuse/core": "^14.3.0",
@@ -19,7 +26,8 @@
     "primeicons": "^7.0.0",
     "primevue": "^4.5.5",
     "vue": "^3.5.39",
-    "vue-router": "^5.1.0"
+    "vue-router": "^5.1.0",
+    "native-audio-recorder": "file:./plugins/native-audio-recorder"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.7",

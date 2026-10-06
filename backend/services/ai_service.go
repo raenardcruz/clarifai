@@ -143,7 +143,16 @@ func GenerateSummaryAndTitle(transcript string) string {
 }
 
 func GenerateTitle(transcript string) string {
+	return GenerateTitleForRecording(transcript, false)
+}
+
+func GenerateTitleForRecording(transcript string, isMedical bool) string {
 	systemPrompt := "Based on the following transcript, generate a concise, professional, and descriptive title for this meeting or conversation. The title should be 3 to 7 words long. Do not include quotes, markdown formatting, or the word 'Title:' in your response. Return ONLY the title text."
+	fallback := "Meeting Note"
+	if isMedical {
+		systemPrompt = "Based on the following medical conversation transcript, generate a concise, professional, and descriptive clinical title for this consultation or medical encounter (e.g. 'Cardiology Follow-up: Treatment Review', 'Pediatric Well-Child Consultation', 'Clinical Evaluation: Acute Bronchitis'). The title should be 3 to 7 words long. Do not include quotes, markdown formatting, or the word 'Title:' in your response. Return ONLY the title text."
+		fallback = "Clinical Consultation"
+	}
 	fullPrompt := fmt.Sprintf("%s\n\nTranscript:\n%s", systemPrompt, transcript)
 
 	reqPayload := OllamaRequest{
@@ -154,27 +163,27 @@ func GenerateTitle(transcript string) string {
 
 	jsonData, err := json.Marshal(reqPayload)
 	if err != nil {
-		return "Meeting Note"
+		return fallback
 	}
 
 	resp, err := http.Post(getOllamaURL("/api/generate"), "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		return "Meeting Note"
+		return fallback
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "Meeting Note"
+		return fallback
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "Meeting Note"
+		return fallback
 	}
 
 	var ollamaResp OllamaResponse
 	if err := json.Unmarshal(body, &ollamaResp); err != nil {
-		return "Meeting Note"
+		return fallback
 	}
 
 	title := strings.TrimSpace(ollamaResp.Response)
@@ -191,11 +200,12 @@ func GenerateTitle(transcript string) string {
 	}
 
 	if title == "" {
-		return "Meeting Note"
+		return fallback
 	}
 
 	return title
 }
+
 
 func DetectSpeakers(transcript string, speakerLabels []string) map[string]string {
 	labelsStr := strings.Join(speakerLabels, ", ")

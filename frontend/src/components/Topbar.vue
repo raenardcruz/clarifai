@@ -2,28 +2,60 @@
   <header class="topbar">
     <div class="left-section">
       <button class="hamburger-btn" @click="toggleSidebar" aria-label="Toggle navigation menu">
-        <Menu size="24" />
+        <Menu size="20" />
       </button>
       
-      <div class="search-container">
-        <Search class="search-icon" size="18" />
-        <input v-model="searchQuery" type="text" class="search-input" placeholder="Search recordings or insights..." />
+      <!-- Apple Spotlight-Style Search Field -->
+      <div class="spotlight-search-container" :class="{ 'is-focused': isSearchFocused }">
+        <Search class="search-icon" size="15" stroke-width="2.2" />
+        <input 
+          ref="searchInputRef"
+          v-model="searchQuery" 
+          type="text" 
+          class="search-input" 
+          placeholder="Search recordings, summaries or speakers..." 
+          @focus="isSearchFocused = true"
+          @blur="isSearchFocused = false"
+        />
+        <button v-if="searchQuery" class="clear-search-btn" @click="clearSearch" title="Clear">
+          <X size="13" />
+        </button>
+        <div v-else class="keyboard-shortcut-hint">
+          <span>⌘K</span>
+        </div>
       </div>
     </div>
 
-    <div class="user-profile">
-      <button class="notification-btn">
-        <Bell size="20" />
-        <span class="badge"></span>
+    <!-- Right Utility Controls -->
+    <div class="right-section">
+      <!-- Network & Offline Sync Pill -->
+      <button 
+        class="network-sync-pill"
+        :class="{ 'is-offline': !offlineStore.isOnline, 'is-syncing': offlineStore.isSyncing, 'has-pending': offlineStore.pendingCount > 0 }"
+        @click="handleSyncClick"
+        :title="offlineStore.isOnline ? (offlineStore.pendingCount > 0 ? 'Click to sync pending recordings' : 'Online and synchronized') : 'Device offline - recordings are safely cached locally'"
+      >
+        <RefreshCw size="13" class="animate-spin" v-if="offlineStore.isSyncing" />
+        <WifiOff size="13" class="text-amber" v-else-if="!offlineStore.isOnline" />
+        <CloudUpload size="13" class="text-blue" v-else-if="offlineStore.pendingCount > 0" />
+        <Wifi size="13" class="text-emerald" v-else />
+
+        <span class="pill-text">
+          {{ !offlineStore.isOnline ? 'Offline' : (offlineStore.isSyncing ? 'Syncing...' : (offlineStore.pendingCount > 0 ? `Sync (${offlineStore.pendingCount})` : 'Online')) }}
+        </span>
       </button>
-      
-      <div class="user-info">
+
+      <div class="user-profile">
         <div class="user-details text-right hidden sm:block">
           <p class="name">{{ authStore.user?.email || 'User' }}</p>
-          <p class="plan">{{ authStore.user?.role === 'admin' ? 'Admin' : 'Pro Plan' }}</p>
+          <span class="role-chip">{{ authStore.user?.role === 'admin' ? 'Admin' : 'Pro Member' }}</span>
         </div>
-        <div class="avatar" :title="authStore.user?.email || 'User'">
-          {{ authStore.user?.email?.[0].toUpperCase() || 'U' }}
+        
+        <div class="avatar-ring" :title="authStore.user?.email || 'User'">
+          <div class="avatar">
+            {{ authStore.user?.email?.[0].toUpperCase() || 'U' }}
+          </div>
+          <span class="status-indicator"></span>
         </div>
       </div>
     </div>
@@ -31,16 +63,26 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Search, Bell, Menu } from '@lucide/vue'
+import { Search, Menu, X, Wifi, WifiOff, CloudUpload, RefreshCw } from '@lucide/vue'
 import { useAuthStore } from '../stores/auth'
+import { useOfflineRecordingsStore } from '../stores/offlineRecordings'
 import { toggleSidebar } from '../stores/layout'
 
 const authStore = useAuthStore()
+const offlineStore = useOfflineRecordingsStore()
 const router = useRouter()
 const route = useRoute()
 const searchQuery = ref(route.query.search || '')
+const isSearchFocused = ref(false)
+const searchInputRef = ref(null)
+
+const handleSyncClick = () => {
+  if (offlineStore.isOnline && offlineStore.pendingCount > 0) {
+    offlineStore.syncAll()
+  }
+}
 
 // Watch for search query input change
 watch(searchQuery, (newVal) => {
@@ -54,6 +96,32 @@ watch(searchQuery, (newVal) => {
 watch(() => route.query.search, (newVal) => {
   searchQuery.value = newVal || ''
 })
+
+const clearSearch = () => {
+  searchQuery.value = ''
+  if (searchInputRef.value) {
+    searchInputRef.value.focus()
+  }
+}
+
+// Global ⌘K shortcut listener
+const handleKeyDown = (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault()
+    if (searchInputRef.value) {
+      searchInputRef.value.focus()
+      searchInputRef.value.select()
+    }
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeyDown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown)
+})
 </script>
 
 <style scoped>
@@ -63,8 +131,13 @@ watch(() => route.query.search, (newVal) => {
   align-items: center;
   justify-content: space-between;
   padding: 0 2rem;
-  background-color: var(--bg-primary);
-  border-bottom: 1px solid var(--neutral-200);
+  background-color: rgba(245, 245, 247, 0.8);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  position: sticky;
+  top: 0;
+  z-index: 30;
 }
 
 .left-section {
@@ -72,7 +145,7 @@ watch(() => route.query.search, (newVal) => {
   align-items: center;
   gap: 1rem;
   flex: 1;
-  max-width: 400px;
+  max-width: 460px;
 }
 
 .hamburger-btn {
@@ -82,112 +155,157 @@ watch(() => route.query.search, (newVal) => {
   color: var(--text-primary);
   cursor: pointer;
   padding: 0.5rem;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   transition: var(--transition);
 }
 
 .hamburger-btn:hover {
-  background-color: var(--neutral-100);
+  background-color: rgba(0, 0, 0, 0.05);
 }
 
-.search-container {
+/* Apple Spotlight Search Field */
+.spotlight-search-container {
   position: relative;
   width: 100%;
+  display: flex;
+  align-items: center;
+  background: rgba(118, 118, 128, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: var(--radius-full);
+  transition: var(--transition);
+  padding: 0 0.85rem 0 0.75rem;
+  height: 38px;
+}
+
+.spotlight-search-container:hover {
+  background: rgba(118, 118, 128, 0.12);
+}
+
+.spotlight-search-container.is-focused {
+  background: var(--white);
+  border-color: var(--apple-blue);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.18), 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .search-icon {
-  position: absolute;
-  left: 1rem;
-  top: 50%;
-  transform: translateY(-50%);
   color: var(--text-muted);
+  flex-shrink: 0;
+  margin-right: 0.5rem;
 }
 
 .search-input {
   width: 100%;
-  padding: 0.75rem 1rem 0.75rem 2.75rem;
-  border-radius: var(--radius-full);
-  border: 1px solid transparent;
-  background-color: var(--white);
+  border: none;
+  background: transparent;
   font-family: var(--font-body);
-  transition: var(--transition);
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  outline: none;
 }
 
-.search-input:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+.search-input::placeholder {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.clear-search-btn {
+  background: rgba(0, 0, 0, 0.1);
+  border: none;
+  border-radius: var(--radius-full);
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.clear-search-btn:hover {
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--text-primary);
+}
+
+.keyboard-shortcut-hint {
+  font-size: 0.7rem;
+  font-family: var(--font-headline);
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+.right-section {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
 }
 
 .user-profile {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-  margin-left: 1rem;
-}
-
-.notification-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  position: relative;
-  transition: var(--transition);
-}
-
-.notification-btn:hover {
-  color: var(--primary);
-}
-
-.badge {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 8px;
-  height: 8px;
-  background-color: #EF4444;
-  border-radius: 50%;
-  border: 2px solid var(--bg-primary);
-}
-
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
+  gap: 0.85rem;
 }
 
 .user-details .name {
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   color: var(--text-primary);
   max-width: 180px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.2;
 }
 
-.user-details .plan {
-  font-size: 0.75rem;
-  color: var(--text-muted);
+.role-chip {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--apple-blue);
+  background: rgba(0, 113, 227, 0.08);
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--radius-full);
+  margin-top: 0.15rem;
+}
+
+.avatar-ring {
+  position: relative;
 }
 
 .avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--secondary), var(--primary));
-  color: var(--white);
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, #0071E3 0%, #AF52DE 100%);
+  color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
   font-family: var(--font-headline);
-  flex-shrink: 0;
+  font-size: 0.85rem;
+  box-shadow: 0 2px 6px rgba(0, 113, 227, 0.25);
+  border: 2px solid #ffffff;
+}
+
+.status-indicator {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 9px;
+  height: 9px;
+  background-color: var(--apple-green);
+  border-radius: var(--radius-full);
+  border: 2px solid #ffffff;
 }
 
 @media (max-width: 768px) {
   .topbar {
-    padding: 0 1.25rem;
+    padding: 0 1rem;
   }
   
   .hamburger-btn {
@@ -195,15 +313,66 @@ watch(() => route.query.search, (newVal) => {
     align-items: center;
     justify-content: center;
   }
+  
+  .spotlight-search-container {
+    height: 34px;
+  }
 }
 
 @media (max-width: 576px) {
   .user-details {
     display: none;
   }
-  
-  .search-container {
-    display: none; /* Hide search bar on tiny screens or keep it small, let's keep topbar clean */
-  }
+}
+
+/* Network Sync Pill */
+.network-sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius-full, 9999px);
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: default;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.network-sync-pill.has-pending {
+  background: rgba(0, 113, 227, 0.08);
+  border-color: rgba(0, 113, 227, 0.25);
+  color: var(--apple-blue);
+  cursor: pointer;
+}
+
+.network-sync-pill.has-pending:hover {
+  background: rgba(0, 113, 227, 0.14);
+}
+
+.network-sync-pill.is-offline {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #b45309;
+}
+
+.network-sync-pill.is-syncing {
+  background: rgba(0, 113, 227, 0.12);
+  color: var(--apple-blue);
+}
+
+.text-emerald {
+  color: #10b981;
+}
+
+.text-amber {
+  color: #f59e0b;
+}
+
+.text-blue {
+  color: var(--apple-blue);
 }
 </style>

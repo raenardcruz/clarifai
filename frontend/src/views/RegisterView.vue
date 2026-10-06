@@ -1,63 +1,93 @@
 <template>
   <div class="auth-layout">
     <div class="auth-card">
-      <div class="text-center mb-8 flex flex-col items-center">
-        <div class="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center mb-4 shadow-lg shadow-indigo-500/30">
-          <Sparkles color="white" />
+      <!-- Apple App Icon & Header -->
+      <div class="auth-header">
+        <div class="auth-app-icon">
+          <Sparkles size="24" color="#FFFFFF" stroke-width="2.2" />
         </div>
-        <h2 class="text-gray-400 font-bold mb-2">ClarifAi</h2>
-        <p class="text-sm text-gray-400">Elevate your productivity</p>
+        <h2 class="auth-title">ClarifAi</h2>
+        <p class="auth-subtitle">Create your personal AI productivity workspace</p>
       </div>
 
-      <form @submit.prevent="handleRegister" v-if="!success">
+      <!-- Registration Form -->
+      <form @submit.prevent="handleRegister" class="auth-form" v-if="!success">
         <div class="form-group">
-          <label>Full Name</label>
-          <div class="relative">
-            <UserIcon class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size="18" />
-            <InputText type="text" v-model="name" class="w-full pl-10" placeholder="Alex Rivera" required />
+          <label class="input-label">Full Name</label>
+          <div class="input-field-wrapper">
+            <UserIcon class="input-icon" size="16" />
+            <input 
+              type="text" 
+              v-model="name" 
+              class="apple-auth-input" 
+              placeholder="e.g. Alex Rivera" 
+              required 
+            />
           </div>
         </div>
 
         <div class="form-group">
-          <label>Username</label>
-          <div class="relative">
-            <Mail class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size="18" />
-            <InputText type="text" v-model="email" class="w-full pl-10" placeholder="alex123" required />
+          <label class="input-label">Username or Email</label>
+          <div class="input-field-wrapper">
+            <Mail class="input-icon" size="16" />
+            <input 
+              type="text" 
+              v-model="email" 
+              class="apple-auth-input" 
+              placeholder="alex123" 
+              required 
+              autocomplete="username"
+            />
           </div>
         </div>
 
         <div class="form-group">
-          <label>Password</label>
-          <div class="relative">
-            <Lock class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size="18" />
-            <Password v-model="password" class="w-full" inputClass="w-full pl-10" placeholder="••••••••" :feedback="false" toggleMask required />
+          <label class="input-label">Password</label>
+          <div class="input-field-wrapper">
+            <Lock class="input-icon" size="16" />
+            <input 
+              :type="showPassword ? 'text' : 'password'" 
+              v-model="password" 
+              class="apple-auth-input" 
+              placeholder="••••••••" 
+              required 
+              autocomplete="new-password"
+            />
+            <button type="button" class="eye-toggle-btn" @click="showPassword = !showPassword">
+              <EyeOff size="15" v-if="showPassword" />
+              <Eye size="15" v-else />
+            </button>
           </div>
         </div>
 
-        <div v-if="error" class="text-red-400 text-sm mb-4 text-center">
-          {{ error }}
+        <div v-if="error" class="error-banner">
+          <span>{{ error }}</span>
         </div>
 
-        <Button type="submit" class="w-full" :loading="loading" label="Create Account">
-          <template #icon>
-            <ArrowRight size="18" v-if="!loading" class="ml-2" />
-          </template>
-        </Button>
+        <button type="submit" class="apple-auth-submit-btn" :disabled="loading">
+          <Loader2 class="animate-spin" size="16" v-if="loading" />
+          <span v-else>Create Account</span>
+          <ArrowRight size="16" v-if="!loading" />
+        </button>
       </form>
 
-      <div v-else class="text-center py-6">
-        <div class="w-16 h-16 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mx-auto mb-4">
-          <Check size="32" />
+      <!-- Success State -->
+      <div v-else class="auth-success-state">
+        <div class="success-icon-circle">
+          <Check size="28" stroke-width="2.5" />
         </div>
-        <h3 class="text-xl font-bold mb-2">Registration Successful</h3>
-        <p class="text-sm text-gray-400 mb-6">Your account has been created and is pending admin approval.</p>
-        <router-link to="/login" class="btn btn-outline w-full text-white border-gray-600 hover:border-indigo-400 hover:text-indigo-400">Back to Login</router-link>
+        <h3 class="success-title">Registration Submitted</h3>
+        <p class="success-desc">Your account has been registered and is pending administrator authorization.</p>
+        
+        <router-link to="/login" class="apple-auth-submit-btn w-full text-center">
+          Back to Sign In
+        </router-link>
       </div>
 
-      <p v-if="!success" class="mt-6 text-center text-sm text-gray-400">
-        Already have an account? 
-        <router-link to="/login" class="text-indigo-400 hover:text-indigo-300 font-medium">Log in</router-link>
-      </p>
+      <div class="auth-footer" v-if="!success">
+        <span>Already have an account?</span>
+        <router-link to="/login" class="auth-link">Sign In</router-link>
+      </div>
     </div>
   </div>
 </template>
@@ -65,11 +95,7 @@
 <script setup>
 import { ref } from 'vue'
 import axios from 'axios'
-import { Sparkles, Mail, Lock, User as UserIcon, ArrowRight, Check } from '@lucide/vue'
-import InputText from 'primevue/inputtext'
-import Password from 'primevue/password'
-import Button from 'primevue/button'
-
+import { Sparkles, Mail, Lock, User as UserIcon, ArrowRight, Check, Loader2, Eye, EyeOff } from '@lucide/vue'
 
 const name = ref('')
 const email = ref('')
@@ -77,6 +103,7 @@ const password = ref('')
 const error = ref('')
 const loading = ref(false)
 const success = ref(false)
+const showPassword = ref(false)
 
 const handleRegister = async () => {
   error.value = ''
@@ -101,45 +128,195 @@ const handleRegister = async () => {
 </script>
 
 <style scoped>
-/* Reusing the scoped classes from LoginView */
-.mb-8 { margin-bottom: 2rem; }
-.mb-6 { margin-bottom: 1.5rem; }
-.mb-4 { margin-bottom: 1rem; }
-.mb-2 { margin-bottom: 0.5rem; }
-.mt-6 { margin-top: 1.5rem; }
-.mx-auto { margin-left: auto; margin-right: auto; }
-.py-6 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
-.text-center { text-align: center; }
-.text-2xl { font-size: 1.5rem; }
-.text-xl { font-size: 1.25rem; }
-.text-sm { font-size: 0.875rem; }
-.font-bold { font-weight: 700; }
-.font-medium { font-weight: 500; }
-.text-gray-400 { color: #9CA3AF; }
-.text-indigo-400 { color: #818CF8; }
-.text-red-400 { color: #F87171; }
-.text-white { color: #ffffff; }
-.text-green-400 { color: #4ADE80; }
-.border-gray-600 { border-color: #4B5563; }
-.hover\:border-indigo-400:hover { border-color: #818CF8; }
-.hover\:text-indigo-400:hover { color: #818CF8; }
-.hover\:text-indigo-300:hover { color: #A5B4FC; }
-.w-12 { width: 3rem; }
-.h-12 { height: 3rem; }
-.w-16 { width: 4rem; }
-.h-16 { height: 4rem; }
-.rounded-xl { border-radius: 0.75rem; }
-.rounded-full { border-radius: 9999px; }
-.bg-gradient-to-br { background-image: linear-gradient(to bottom right, var(--tw-gradient-stops)); }
-.from-indigo-500 { --tw-gradient-from: #6366f1; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgba(99, 102, 241, 0)); }
-.to-purple-600 { --tw-gradient-to: #9333ea; }
-.bg-green-500\/20 { background-color: rgba(34, 197, 94, 0.2); }
-.shadow-lg { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
-.shadow-indigo-500\/30 { box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.3); }
-.relative { position: relative; }
-.absolute { position: absolute; }
-.left-3 { left: 0.75rem; }
-.top-1\/2 { top: 50%; }
-.-translate-y-1\/2 { transform: translateY(-50%); }
-.pl-10 { padding-left: 2.5rem; }
+.auth-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.auth-app-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, #0071E3 0%, #AF52DE 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 8px 24px rgba(0, 113, 227, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.25) inset;
+}
+
+.auth-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #FFFFFF;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.35rem;
+}
+
+.auth-subtitle {
+  font-size: 0.88rem;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.input-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 0.4rem;
+  display: block;
+}
+
+.input-field-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-icon {
+  position: absolute;
+  left: 0.85rem;
+  color: rgba(255, 255, 255, 0.4);
+  pointer-events: none;
+}
+
+.apple-auth-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 2.5rem 0.75rem 2.4rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+  color: #FFFFFF;
+  outline: none;
+  transition: var(--transition-fast);
+}
+
+.apple-auth-input:focus {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--apple-blue);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.35);
+}
+
+.apple-auth-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.eye-toggle-btn {
+  position: absolute;
+  right: 0.85rem;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.eye-toggle-btn:hover {
+  color: #FFFFFF;
+}
+
+.error-banner {
+  background: rgba(255, 59, 48, 0.15);
+  border: 1px solid rgba(255, 59, 48, 0.3);
+  color: #FF6961;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  margin-bottom: 1.25rem;
+  text-align: center;
+}
+
+.apple-auth-submit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: linear-gradient(180deg, #0077ED 0%, #0071E3 100%);
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--radius-full);
+  padding: 0.8rem 1.5rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s var(--apple-ease);
+  box-shadow: 0 4px 16px rgba(0, 113, 227, 0.4);
+  margin-top: 0.5rem;
+  text-decoration: none;
+}
+
+.apple-auth-submit-btn:hover {
+  background: linear-gradient(180deg, #0A84FF 0%, #0077ED 100%);
+  transform: translateY(-1px);
+}
+
+.apple-auth-submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-success-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 1rem 0;
+}
+
+.success-icon-circle {
+  width: 60px;
+  height: 60px;
+  border-radius: var(--radius-full);
+  background: rgba(52, 199, 89, 0.18);
+  color: #30D158;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+}
+
+.success-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #FFFFFF;
+  margin-bottom: 0.5rem;
+}
+
+.success-desc {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.65);
+  margin-bottom: 1.75rem;
+  line-height: 1.5;
+}
+
+.auth-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-top: 1.75rem;
+  font-size: 0.825rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.auth-link {
+  color: #64D2FF;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.auth-link:hover {
+  text-decoration: underline;
+}
 </style>

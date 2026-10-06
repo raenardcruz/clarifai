@@ -1,49 +1,68 @@
 <template>
   <div class="auth-layout">
     <div class="auth-card">
-      <div class="text-center mb-8 flex flex-col items-center">
-        <div class="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center mb-4 shadow-lg shadow-indigo-500/30">
-          <Sparkles color="white" />
+      <!-- Apple App Icon & Header -->
+      <div class="auth-header">
+        <div class="auth-app-icon">
+          <Sparkles size="24" color="#FFFFFF" stroke-width="2.2" />
         </div>
-        <h2 class="text-gray-400 font-bold mb-2">ClarifAi</h2>
-        <p class="text-sm text-gray-400">Elevate your productivity</p>
+        <h2 class="auth-title">ClarifAi</h2>
+        <p class="auth-subtitle">Sign in to your productivity workspace</p>
       </div>
 
-      <form @submit.prevent="handleLogin">
+      <form @submit.prevent="handleLogin" class="auth-form">
         <div class="form-group">
-          <label>Username</label>
-          <div class="relative">
-            <Mail class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size="18" />
-            <InputText type="text" v-model="email" class="w-full pl-10" placeholder="admin" required />
+          <label class="input-label">Username</label>
+          <div class="input-field-wrapper">
+            <Mail class="input-icon" size="16" />
+            <input 
+              type="text" 
+              v-model="email" 
+              class="apple-auth-input" 
+              placeholder="Username or email" 
+              required 
+              autocomplete="username"
+            />
           </div>
         </div>
 
         <div class="form-group">
-          <div class="flex justify-between items-center mb-1">
-            <label class="mb-0">Password</label>
-            <a href="#" class="text-xs text-indigo-400 hover:text-indigo-300">Forgot password?</a>
+          <div class="label-row">
+            <label class="input-label">Password</label>
+            <a href="#" class="forgot-link">Forgot password?</a>
           </div>
-          <div class="relative">
-            <Lock class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size="18" />
-            <Password v-model="password" class="w-full" inputClass="w-full pl-10" placeholder="••••••••" :feedback="false" toggleMask required />
+          <div class="input-field-wrapper">
+            <Lock class="input-icon" size="16" />
+            <input 
+              :type="showPassword ? 'text' : 'password'" 
+              v-model="password" 
+              class="apple-auth-input" 
+              placeholder="••••••••" 
+              required 
+              autocomplete="current-password"
+            />
+            <button type="button" class="eye-toggle-btn" @click="showPassword = !showPassword">
+              <EyeOff size="15" v-if="showPassword" />
+              <Eye size="15" v-else />
+            </button>
           </div>
         </div>
 
-        <div v-if="error" class="text-red-400 text-sm mb-4 text-center">
-          {{ error }}
+        <div v-if="error" class="error-banner">
+          <span>{{ error }}</span>
         </div>
 
-        <Button type="submit" class="w-full" :loading="loading" label="Sign In">
-          <template #icon>
-            <ArrowRight size="18" v-if="!loading" class="ml-2" />
-          </template>
-        </Button>
+        <button type="submit" class="apple-auth-submit-btn" :disabled="loading">
+          <Loader2 class="animate-spin" size="16" v-if="loading" />
+          <span v-else>Sign In</span>
+          <ArrowRight size="16" v-if="!loading" />
+        </button>
       </form>
 
-      <p class="mt-6 text-center text-sm text-gray-400">
-        Don't have an account? 
-        <router-link to="/register" class="text-indigo-400 hover:text-indigo-300 font-medium">Sign up</router-link>
-      </p>
+      <div class="auth-footer">
+        <span>Don't have an account?</span>
+        <router-link to="/register" class="auth-link">Create Account</router-link>
+      </div>
     </div>
   </div>
 </template>
@@ -53,10 +72,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import axios from 'axios'
-import { Sparkles, Mail, Lock, ArrowRight } from '@lucide/vue'
-import InputText from 'primevue/inputtext'
-import Password from 'primevue/password'
-import Button from 'primevue/button'
+import { Sparkles, Mail, Lock, ArrowRight, Loader2, Eye, EyeOff } from '@lucide/vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -65,6 +81,7 @@ const email = ref('')
 const password = ref('')
 const error = ref('')
 const loading = ref(false)
+const showPassword = ref(false)
 
 const handleLogin = async () => {
   error.value = ''
@@ -88,7 +105,7 @@ const handleLogin = async () => {
     if (err.response?.status === 400) {
       error.value = err.response.data.detail
     } else {
-      error.value = 'Invalid email or password'
+      error.value = 'Invalid username or password'
     }
   } finally {
     loading.value = false
@@ -97,35 +114,181 @@ const handleLogin = async () => {
 </script>
 
 <style scoped>
-/* Scoped overrides to use the global auth styles and utility classes */
-.mb-8 { margin-bottom: 2rem; }
-.mb-4 { margin-bottom: 1rem; }
-.mb-2 { margin-bottom: 0.5rem; }
-.mb-1 { margin-bottom: 0.25rem; }
-.mb-0 { margin-bottom: 0; }
-.mt-6 { margin-top: 1.5rem; }
-.text-center { text-align: center; }
-.text-2xl { font-size: 1.5rem; }
-.text-sm { font-size: 0.875rem; }
-.text-xs { font-size: 0.75rem; }
-.font-bold { font-weight: 700; }
-.font-medium { font-weight: 500; }
-.text-gray-400 { color: #9CA3AF; }
-.text-indigo-400 { color: #818CF8; }
-.text-red-400 { color: #F87171; }
-.hover\:text-indigo-300:hover { color: #A5B4FC; }
-.w-12 { width: 3rem; }
-.h-12 { height: 3rem; }
-.rounded-xl { border-radius: 0.75rem; }
-.bg-gradient-to-br { background-image: linear-gradient(to bottom right, var(--tw-gradient-stops)); }
-.from-indigo-500 { --tw-gradient-from: #6366f1; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgba(99, 102, 241, 0)); }
-.to-purple-600 { --tw-gradient-to: #9333ea; }
-.shadow-lg { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
-.shadow-indigo-500\/30 { box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.3); }
-.relative { position: relative; }
-.absolute { position: absolute; }
-.left-3 { left: 0.75rem; }
-.top-1\/2 { top: 50%; }
-.-translate-y-1\/2 { transform: translateY(-50%); }
-.pl-10 { padding-left: 2.5rem; }
+.auth-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.auth-app-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, #0071E3 0%, #AF52DE 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 8px 24px rgba(0, 113, 227, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.25) inset;
+}
+
+.auth-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #FFFFFF;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.35rem;
+}
+
+.auth-subtitle {
+  font-size: 0.88rem;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.input-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 0.4rem;
+  display: block;
+}
+
+.label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+
+.forgot-link {
+  font-size: 0.75rem;
+  color: #64D2FF;
+  text-decoration: none;
+}
+
+.forgot-link:hover {
+  text-decoration: underline;
+}
+
+.input-field-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-icon {
+  position: absolute;
+  left: 0.85rem;
+  color: rgba(255, 255, 255, 0.4);
+  pointer-events: none;
+}
+
+.apple-auth-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 2.5rem 0.75rem 2.4rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+  color: #FFFFFF;
+  outline: none;
+  transition: var(--transition-fast);
+}
+
+.apple-auth-input:focus {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--apple-blue);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.35);
+}
+
+.apple-auth-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.eye-toggle-btn {
+  position: absolute;
+  right: 0.85rem;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.eye-toggle-btn:hover {
+  color: #FFFFFF;
+}
+
+.error-banner {
+  background: rgba(255, 59, 48, 0.15);
+  border: 1px solid rgba(255, 59, 48, 0.3);
+  color: #FF6961;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  margin-bottom: 1.25rem;
+  text-align: center;
+}
+
+.apple-auth-submit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: linear-gradient(180deg, #0077ED 0%, #0071E3 100%);
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--radius-full);
+  padding: 0.8rem 1.5rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s var(--apple-ease);
+  box-shadow: 0 4px 16px rgba(0, 113, 227, 0.4);
+  margin-top: 0.5rem;
+}
+
+.apple-auth-submit-btn:hover {
+  background: linear-gradient(180deg, #0A84FF 0%, #0077ED 100%);
+  transform: translateY(-1px);
+}
+
+.apple-auth-submit-btn:active {
+  transform: scale(0.98);
+}
+
+.apple-auth-submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-top: 1.75rem;
+  font-size: 0.825rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.auth-link {
+  color: #64D2FF;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.auth-link:hover {
+  text-decoration: underline;
+}
 </style>

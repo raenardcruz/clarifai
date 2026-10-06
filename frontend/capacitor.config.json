@@ -1,0 +1,13 @@
+{
+  "appId": "com.notetaker.ai",
+  "appName": "Note-Taker AI",
+  "webDir": "dist",
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  },
+  "ios": {
+    "scheme": "NoteTaker"
+  }
+}

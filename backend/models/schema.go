@@ -26,6 +26,7 @@ type Recording struct {
 	Duration          *float64            `json:"duration,omitempty"`
 	SpeechmaticsJobID *string             `json:"speechmatics_job_id,omitempty"`
 	ErrorMessage      *string             `json:"error_message,omitempty"`
+	IsMedical         bool                `gorm:"default:false" json:"is_medical"`
 	CreatedAt         time.Time           `gorm:"autoCreateTime" json:"created_at"`
 	Segments          []TranscriptSegment `gorm:"foreignKey:RecordingID;constraint:OnDelete:CASCADE" json:"segments,omitempty"`
 }
@@ -39,10 +40,32 @@ type TranscriptSegment struct {
 	Text        string  `gorm:"not null" json:"text"`
 }
 
+const DefaultMedicalSummaryPrompt = `Analyze the following medical or clinical encounter transcript and generate a structured Clinical / SOAP Note in clean Markdown:
+
+### 1. Patient & Encounter Overview
+- Chief Complaint and reason for consultation
+
+### 2. Subjective (History of Present Illness)
+- Patient-reported symptoms, timeline, pain/severity, and relevant medical history
+
+### 3. Objective & Clinical Discussion
+- Observed clinical signs, vital signs or lab/diagnostic results mentioned, physical examination discussions
+
+### 4. Assessment & Clinical Impression
+- Differential or confirmed diagnoses, clinical reasoning, and provider impressions
+
+### 5. Plan & Management
+- Prescriptions/medications (dosage and instructions if discussed), treatment recommendations, ordered tests/referrals, lifestyle advice, and follow-up plan.
+
+Ensure strict clinical accuracy, capturing concrete details without omitting medical context.`
+
 type Settings struct {
 	ID                     uint    `gorm:"primaryKey" json:"id"`
 	AISummarizationMode    string  `gorm:"default:auto" json:"ai_summarization_mode"`
 	ExecutiveSummaryPrompt string  `gorm:"type:text;default:'Analyze the following transcript and write a detailed, cohesive executive summary in a narrative paragraph format. Synthesize the meeting''s core purpose, main arguments, and final outcomes into smooth, professional prose, explicitly attributing key ideas, decisions, and viewpoints to specific speakers by name (or speaker identifier) directly within the flow of the text. Ensure the summary is comprehensive and captures concrete details, specific project names, and actionable next steps, but deliver it entirely as a sequence of well-structured paragraphs without using any bullet points, lists, or tables.'"`
+	MedicalSummaryPrompt   string  `gorm:"type:text" json:"medical_summary_prompt"`
 	SpeechmaticsAPIKey     *string `json:"speechmatics_api_key,omitempty"`
 	OllamaModel            string  `gorm:"default:'gemma4:12b-mlx'" json:"ollama_model"`
 }
+
+

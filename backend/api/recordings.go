@@ -60,6 +60,7 @@ type RecordingOut struct {
 	Status    string   `json:"status"`
 	CreatedAt string   `json:"created_at"`
 	Duration  *float64 `json:"duration"`
+	IsMedical bool     `json:"is_medical"`
 }
 
 func SetupRecordingsRoutes(router *gin.RouterGroup) {
@@ -78,12 +79,14 @@ func SetupRecordingsRoutes(router *gin.RouterGroup) {
 		authGroup.GET("/recent", getRecentRecordings)
 		authGroup.GET("/speechmatics-usage", getSpeechmaticsUsage)
 		authGroup.GET("/:recording_id", getRecordingDetails)
+		authGroup.PATCH("/:recording_id", updateRecording)
 		authGroup.PUT("/:recording_id/segments/:segment_id", updateSegment)
 		authGroup.POST("/:recording_id/summarize", triggerSummary)
 		authGroup.POST("/:recording_id/detect-speakers", detectRecordingSpeakers)
 		authGroup.DELETE("/:recording_id", deleteRecording)
 	}
 }
+
 
 func getContextUser(c *gin.Context) (*models.User, error) {
 	userVal, exists := c.Get("current_user")
@@ -123,6 +126,8 @@ func uploadAudio(c *gin.Context) {
 		return
 	}
 
+	isMedical := c.PostForm("is_medical") == "true" || c.PostForm("is_medical") == "1"
+
 	recording := models.Recording{
 		ID:        jobID,
 		UserID:    currentUser.ID,
@@ -130,6 +135,7 @@ func uploadAudio(c *gin.Context) {
 		Filename:  file.Filename,
 		AudioPath: filePath,
 		Status:    "pending",
+		IsMedical: isMedical,
 	}
 
 	if err := db.Create(&recording).Error; err != nil {
@@ -152,7 +158,9 @@ type CompleteUploadRequest struct {
 	UploadID    string `json:"upload_id" binding:"required"`
 	Filename    string `json:"filename" binding:"required"`
 	TotalChunks int    `json:"total_chunks" binding:"required"`
+	IsMedical   bool   `json:"is_medical"`
 }
+
 
 func initChunkedUpload(c *gin.Context) {
 	_, err := getContextUser(c)
@@ -322,6 +330,7 @@ func completeChunkedUpload(c *gin.Context) {
 		Filename:  cleanFilename,
 		AudioPath: filePath,
 		Status:    "pending",
+		IsMedical: req.IsMedical,
 	}
 
 	if err := db.Create(&recording).Error; err != nil {
@@ -343,8 +352,15 @@ func getRecordings(c *gin.Context) {
 	}
 
 	search := c.Query("search")
+	isMedicalFilter := c.Query("is_medical")
 	db := models.GetDB()
 	query := db.Model(&models.Recording{}).Where("user_id = ?", currentUser.ID)
+
+	if isMedicalFilter == "true" {
+		query = query.Where("recordings.is_medical = ?", true)
+	} else if isMedicalFilter == "false" {
+		query = query.Where("recordings.is_medical = ?", false)
+	}
 
 	if search != "" {
 		searchPattern := "%" + search + "%"
@@ -364,6 +380,7 @@ func getRecordings(c *gin.Context) {
 			Status:    r.Status,
 			CreatedAt: r.CreatedAt.Format(time.RFC3339),
 			Duration:  r.Duration,
+			IsMedical: r.IsMedical,
 		})
 	}
 
@@ -404,6 +421,7 @@ func getRecentRecordings(c *gin.Context) {
 			Status:    r.Status,
 			CreatedAt: r.CreatedAt.Format(time.RFC3339),
 			Duration:  r.Duration,
+			IsMedical: r.IsMedical,
 		})
 	}
 
@@ -415,6 +433,7 @@ func getRecentRecordings(c *gin.Context) {
 			"insights_generated": totalRecs * 3, // mock
 		},
 	})
+
 }
 
 func getSpeechmaticsUsage(c *gin.Context) {
@@ -529,6 +548,7 @@ func getRecordingDetails(c *gin.Context) {
 		"created_at": recording.CreatedAt.Format(time.RFC3339),
 		"duration":   recording.Duration,
 		"summary_md": recording.SummaryMD,
+		"is_medical": recording.IsMedical,
 		"segments":   segments,
 	})
 }
@@ -550,6 +570,51 @@ func getSharedRecording(c *gin.Context) {
 		"created_at": recording.CreatedAt.Format(time.RFC3339),
 		"duration":   recording.Duration,
 		"summary_md": recording.SummaryMD,
+		"is_medical": recording.IsMedical,
+	})
+}
+
+type UpdateRecordingRequest struct {
+	IsMedical *bool   `json:"is_medical"`
+	Title     *string `json:"title"`
+}
+
+func updateRecording(c *gin.Context) {
+	currentUser, err := getContextUser(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	recordingID := c.Param("recording_id")
+	db := models.GetDB()
+
+	var recording models.Recording
+	if err := db.Where("id = ? AND user_id = ?", recordingID, currentUser.ID).First(&recording).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "Recording not found"})
+		return
+	}
+
+	var req UpdateRecordingRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		return
+	}
+
+	if req.IsMedical != nil {
+		recording.IsMedical = *req.IsMedical
+	}
+	if req.Title != nil && strings.TrimSpace(*req.Title) != "" {
+		recording.Title = strings.TrimSpace(*req.Title)
+	}
+
+	db.Save(&recording)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Recording updated successfully",
+		"id":         recording.ID,
+		"is_medical": recording.IsMedical,
+		"title":      recording.Title,
 	})
 }
 
@@ -596,6 +661,7 @@ func updateSegment(c *gin.Context) {
 
 type SummarizeRequest struct {
 	Instruction string `json:"instruction"`
+	IsMedical   *bool  `json:"is_medical"`
 }
 
 func triggerSummary(c *gin.Context) {
@@ -622,10 +688,16 @@ func triggerSummary(c *gin.Context) {
 	var req SummarizeRequest
 	_ = c.ShouldBindJSON(&req)
 
+	if req.IsMedical != nil && recording.IsMedical != *req.IsMedical {
+		recording.IsMedical = *req.IsMedical
+		db.Save(&recording)
+	}
+
 	go services.GenerateSummary(recordingID, req.Instruction)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Summarization triggered"})
 }
+
 
 func detectRecordingSpeakers(c *gin.Context) {
 	currentUser, err := getContextUser(c)

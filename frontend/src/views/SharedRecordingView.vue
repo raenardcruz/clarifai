@@ -1,38 +1,65 @@
 <template>
-  <div class="recording-show-page" v-if="recording">
+  <div class="shared-page-container" v-if="recording">
     <!-- Read Only Header for Shared View -->
-    <div class="header-section text-center mb-8 no-print">
-      <div class="inline-flex items-center gap-2 mb-4">
-        <div class="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center">
-          <Sparkles size="16" color="white" />
+    <header class="shared-header no-print">
+      <div class="brand-row">
+        <div class="shared-logo-icon">
+          <Sparkles size="16" color="#FFFFFF" stroke-width="2.5" />
         </div>
-        <span class="font-bold text-lg">ClarifAi Shared Insight</span>
+        <span class="brand-title">ClarifAi Shared Intelligence</span>
       </div>
-      <h1 class="page-title">{{ recording.title }}</h1>
-      <div class="meta-info justify-center mt-4">
-        <span class="meta-item"><Calendar size="14" /> {{ formattedDate }}</span>
-        <span class="meta-item"><Clock size="14" /> {{ formattedDuration }}</span>
-      </div>
-    </div>
 
-    <!-- Summary Only View -->
-    <div class="summary-view">
-      <div class="summary-card glass" v-if="recording.summary_md">
-        <div class="flex items-center justify-between mb-4 screen-summary-header">
+      <h1 class="page-title">{{ recording.title }}</h1>
+      
+      <div class="meta-pills-row">
+        <span class="meta-pill">
+          <Calendar size="13" />
+          <span>{{ formattedDate }}</span>
+        </span>
+        <span class="meta-pill">
+          <Clock size="13" />
+          <span class="font-tabular">{{ formattedDuration }}</span>
+        </span>
+        <span class="meta-pill pill-shared">
+          <span>Read-Only Preview</span>
+        </span>
+      </div>
+
+      <div class="shared-actions-bar">
+        <button class="apple-btn-secondary" @click="copySummary" v-if="recording.summary_md">
+          <Check size="14" v-if="copied" class="text-green" />
+          <Copy size="14" v-else />
+          <span>{{ copied ? 'Copied!' : 'Copy Summary' }}</span>
+        </button>
+
+        <button class="apple-btn-secondary" @click="printSummary" v-if="recording.summary_md">
+          <Printer size="14" />
+          <span>Print / Save PDF</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Summary Document Card -->
+    <main class="shared-doc-wrapper">
+      <div class="apple-doc-card" v-if="recording.summary_md">
+        <div class="doc-header screen-summary-header">
           <div class="flex items-center gap-2">
-            <Sparkles size="20" class="text-tertiary" />
-            <h2 class="text-xl font-bold text-tertiary">Executive Summary</h2>
+            <Sparkles size="20" class="text-blue" />
+            <h2 class="doc-heading">Executive Summary</h2>
           </div>
         </div>
         <div class="markdown-content" v-html="parsedSummary"></div>
       </div>
-      <div v-else class="text-center py-20 text-gray-500">
-        No summary generated yet.
+      
+      <div v-else class="apple-doc-card empty-card">
+        <p>No executive summary generated yet for this recording.</p>
       </div>
-    </div>
+    </main>
   </div>
-  <div v-else class="flex justify-center items-center h-screen">
-    <Loader2 class="animate-spin text-primary" size="40" />
+
+  <div v-else class="full-page-loader">
+    <Loader2 class="animate-spin text-blue" size="44" />
+    <span class="loader-label">Loading shared insight...</span>
   </div>
 </template>
 
@@ -43,15 +70,15 @@ import axios from 'axios'
 import moment from 'moment'
 import { marked } from 'marked'
 import { useToast } from 'primevue/usetoast'
-import { Calendar, Clock, Sparkles, Loader2, Printer } from '@lucide/vue'
+import { Calendar, Clock, Sparkles, Loader2, Printer, Copy, Check } from '@lucide/vue'
 import { useTitle } from '@vueuse/core'
-import Button from 'primevue/button'
 
 const route = useRoute()
 const toast = useToast()
 const recording = ref(null)
+const copied = ref(false)
 
-const title = computed(() => recording.value ? `${recording.value.title} - ClarifAi (Shared)` : 'ClarifAi')
+const title = computed(() => recording.value ? `${recording.value.title} — ClarifAi (Shared)` : 'ClarifAi Shared Insight')
 useTitle(title)
 
 onMounted(async () => {
@@ -60,7 +87,7 @@ onMounted(async () => {
     recording.value = res.data
   } catch (e) {
     console.error("Failed to load recording", e)
-    toast.add({ severity: 'error', summary: 'Access Error', detail: 'Recording not found or is private', life: 5000 })
+    toast.add({ severity: 'error', summary: 'Access Error', detail: 'Recording not found or is private.', life: 5000 })
   }
 })
 
@@ -68,14 +95,21 @@ const parsedSummary = computed(() => {
   return recording.value?.summary_md ? marked(recording.value.summary_md) : ''
 })
 
+const copySummary = () => {
+  if (!recording.value?.summary_md) return
+  navigator.clipboard.writeText(recording.value.summary_md)
+  copied.value = true
+  toast.add({ severity: 'success', summary: 'Copied', detail: 'Summary copied to clipboard.', life: 2500 })
+  setTimeout(() => { copied.value = false }, 2500)
+}
+
 const printSummary = () => {
   window.print()
 }
 
-// Helpers
-const formattedDate = computed(() => recording.value ? moment(recording.value.created_at).format('MMM DD, YYYY') : '')
+const formattedDate = computed(() => recording.value ? moment(recording.value.created_at).format('MMMM D, YYYY') : '')
 const formattedDuration = computed(() => {
-  if (!recording.value || !recording.value.duration) return '--:--'
+  if (!recording.value || !recording.value.duration) return '00:00'
   const mins = Math.floor(recording.value.duration / 60)
   const secs = Math.floor(recording.value.duration % 60)
   return `${mins}:${secs.toString().padStart(2, '0')}`
@@ -83,19 +117,224 @@ const formattedDuration = computed(() => {
 </script>
 
 <style scoped>
-.recording-show-page { max-width: 1000px; margin: 0 auto; padding-top: 2rem; }
-.page-title { font-size: 2.25rem; margin-bottom: 0.75rem; color: var(--primary); }
-.meta-info { display: flex; align-items: center; gap: 1.5rem; }
-.meta-item { display: flex; align-items: center; gap: 0.5rem; color: var(--text-secondary); font-size: 0.875rem; }
-.summary-card { padding: 2.5rem; border-radius: var(--radius-xl); }
-.markdown-content :deep(h1) { font-size: 1.5rem; margin-bottom: 1rem; margin-top: 1.5rem; }
-.markdown-content :deep(h2) { font-size: 1.25rem; margin-bottom: 0.75rem; margin-top: 1.5rem; }
-.markdown-content :deep(h3) { font-size: 1.1rem; margin-bottom: 0.5rem; margin-top: 1.5rem; }
-.markdown-content :deep(p) { margin-bottom: 1rem; color: var(--text-secondary); }
-.markdown-content :deep(ul), .markdown-content :deep(ol) { margin-bottom: 1rem; padding-left: 1.5rem; }
-.markdown-content :deep(li) { margin-bottom: 0.5rem; color: var(--text-secondary); }
-.markdown-content :deep(strong) { color: var(--text-primary); font-weight: 600; }
-.markdown-content :deep(blockquote) { border-left: 4px solid var(--primary); padding-left: 1rem; margin-left: 0; color: var(--text-muted); font-style: italic; }
-.text-tertiary { color: var(--tertiary); }
-</style>
+.shared-page-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 3rem 2rem 5rem 2rem;
+}
 
+.shared-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+.brand-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--bg-secondary);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 0.35rem 0.85rem;
+  border-radius: var(--radius-full);
+  margin-bottom: 1.25rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.shared-logo-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #0071E3, #AF52DE);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brand-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.page-title {
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+  line-height: 1.2;
+}
+
+.meta-pills-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.meta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--bg-secondary);
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-full);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.pill-shared {
+  background: var(--apple-blue-light);
+  color: var(--apple-blue);
+  font-weight: 600;
+}
+
+.shared-actions-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.apple-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: var(--bg-secondary);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  padding: 0.55rem 1rem;
+  border-radius: var(--radius-full);
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s var(--apple-ease);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.apple-btn-secondary:hover {
+  background: rgba(0, 0, 0, 0.04);
+  transform: translateY(-1px);
+}
+
+.shared-doc-wrapper {
+  width: 100%;
+}
+
+.apple-doc-card {
+  background: var(--white);
+  border-radius: var(--radius-2xl);
+  padding: 3.5rem 4rem;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  box-shadow: 0 8px 30px -4px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.doc-header {
+  padding-bottom: 1.5rem;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+.doc-heading {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.empty-card {
+  text-align: center;
+  padding: 5rem 2rem;
+  color: var(--text-muted);
+}
+
+.markdown-content {
+  font-size: 1.05rem;
+  line-height: 1.75;
+  color: #1d1d1f;
+}
+
+.markdown-content :deep(h1) {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin-top: 2rem;
+  margin-bottom: 0.85rem;
+}
+
+.markdown-content :deep(h2) {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-top: 1.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.markdown-content :deep(p) {
+  margin-bottom: 1.25rem;
+  color: #333336;
+}
+
+.markdown-content :deep(ul), .markdown-content :deep(ol) {
+  margin-bottom: 1.25rem;
+  padding-left: 1.5rem;
+}
+
+.markdown-content :deep(li) {
+  margin-bottom: 0.5rem;
+  color: #333336;
+}
+
+.markdown-content :deep(strong) {
+  color: #000000;
+  font-weight: 600;
+}
+
+.markdown-content :deep(blockquote) {
+  border-left: 3.5px solid var(--apple-blue);
+  background: var(--neutral-50);
+  padding: 0.85rem 1.25rem;
+  margin: 1.5rem 0;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.full-page-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 80vh;
+  gap: 1rem;
+}
+
+.loader-label {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.text-blue { color: var(--apple-blue); }
+.text-green { color: var(--apple-green); }
+.font-tabular { font-variant-numeric: tabular-nums; }
+
+@media (max-width: 768px) {
+  .shared-page-container {
+    padding: 1.5rem 1rem;
+  }
+
+  .page-title {
+    font-size: 1.85rem;
+  }
+
+  .apple-doc-card {
+    padding: 2rem 1.5rem;
+  }
+}
+</style>
