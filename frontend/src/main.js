@@ -10,8 +10,8 @@ import ToastService from 'primevue/toastservice'
 import './style.css' // Design system tokens and aesthetics
 import 'primeicons/primeicons.css'
 
-// Configure Axios defaults
-axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL || ''
+import { initApiConfig } from './services/apiConfig'
+import { useOfflineRecordingsStore } from './stores/offlineRecordings'
 
 const app = createApp(App)
 const pinia = createPinia()
@@ -28,4 +28,10 @@ app.use(PrimeVue, {
 })
 app.use(ToastService)
 
+initApiConfig().then(() => {
+  const offlineStore = useOfflineRecordingsStore(pinia)
+  offlineStore.init()
+})
+
 app.mount('#app')
+

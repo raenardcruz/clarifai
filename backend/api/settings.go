@@ -11,6 +11,7 @@ import (
 type SettingsUpdate struct {
 	AISummarizationMode    string  `json:"ai_summarization_mode" binding:"required"`
 	ExecutiveSummaryPrompt string  `json:"executive_summary_prompt" binding:"required"`
+	MedicalSummaryPrompt   string  `json:"medical_summary_prompt"`
 	SpeechmaticsAPIKey     *string `json:"speechmatics_api_key,omitempty"`
 	OllamaModel            string  `json:"ollama_model"`
 }
@@ -18,6 +19,7 @@ type SettingsUpdate struct {
 type SettingsOut struct {
 	AISummarizationMode    string  `json:"ai_summarization_mode"`
 	ExecutiveSummaryPrompt string  `json:"executive_summary_prompt"`
+	MedicalSummaryPrompt   string  `json:"medical_summary_prompt"`
 	SpeechmaticsAPIKey     *string `json:"speechmatics_api_key,omitempty"`
 	OllamaModel            string  `json:"ollama_model"`
 }
@@ -42,6 +44,7 @@ func SetupSettingsRoutes(router *gin.RouterGroup) {
 		c.JSON(http.StatusOK, SettingsOut{
 			AISummarizationMode:    settings.AISummarizationMode,
 			ExecutiveSummaryPrompt: settings.ExecutiveSummaryPrompt,
+			MedicalSummaryPrompt:   settings.MedicalSummaryPrompt,
 			SpeechmaticsAPIKey:     maskedKey,
 			OllamaModel:            settings.OllamaModel,
 		})
@@ -75,6 +78,9 @@ func SetupSettingsRoutes(router *gin.RouterGroup) {
 
 		settings.AISummarizationMode = input.AISummarizationMode
 		settings.ExecutiveSummaryPrompt = input.ExecutiveSummaryPrompt
+		if input.MedicalSummaryPrompt != "" {
+			settings.MedicalSummaryPrompt = input.MedicalSummaryPrompt
+		}
 		if input.OllamaModel != "" {
 			settings.OllamaModel = input.OllamaModel
 		}
@@ -94,8 +100,10 @@ func SetupSettingsRoutes(router *gin.RouterGroup) {
 		c.JSON(http.StatusOK, SettingsOut{
 			AISummarizationMode:    settings.AISummarizationMode,
 			ExecutiveSummaryPrompt: settings.ExecutiveSummaryPrompt,
+			MedicalSummaryPrompt:   settings.MedicalSummaryPrompt,
 			SpeechmaticsAPIKey:     maskedKey,
 			OllamaModel:            settings.OllamaModel,
 		})
 	})
+
 }

@@ -136,8 +136,11 @@ func SeedDB() {
 	DB.Model(&Settings{}).Count(&count)
 	if count == 0 {
 		log.Println("Creating default settings...")
-		defaultSettings := Settings{}
+		defaultSettings := Settings{
+			MedicalSummaryPrompt: DefaultMedicalSummaryPrompt,
+		}
 		if err := DB.Create(&defaultSettings).Error; err != nil {
+
 			log.Printf("Failed to create default settings: %v", err)
 		} else {
 			log.Println("Default settings created.")
@@ -145,5 +148,7 @@ func SeedDB() {
 	} else {
 		// Update empty/null ollama_model in existing settings
 		DB.Model(&Settings{}).Where("ollama_model = ? OR ollama_model IS NULL", "").Update("ollama_model", "gemma4:12b-mlx")
+		DB.Model(&Settings{}).Where("medical_summary_prompt = ? OR medical_summary_prompt IS NULL", "").Update("medical_summary_prompt", DefaultMedicalSummaryPrompt)
 	}
 }
+

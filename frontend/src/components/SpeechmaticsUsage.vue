@@ -1,50 +1,68 @@
 <template>
   <div v-if="usageData" :class="['speechmatics-usage-container', type]">
-    <div v-if="type === 'card'" class="usage-card glass">
-      <div class="card-header">
-        <div class="icon-wrapper">
-          <Activity size="20" class="text-primary animate-pulse-slow" />
+    <!-- Card Mode (Dashboard Widget) -->
+    <div v-if="type === 'card'" class="apple-usage-widget">
+      <div class="widget-header">
+        <div class="icon-glyph-container" :class="usageSeverityClass">
+          <Activity size="20" stroke-width="2.2" />
         </div>
         <div class="header-info">
-          <span class="label">SPEECHMATICS USAGE</span>
-          <h3 class="value">{{ usageData.used_hours }} / {{ usageData.limit_hours }} hrs</h3>
+          <span class="widget-label">SPEECHMATICS USAGE</span>
+          <div class="value-row">
+            <span class="value-highlight">{{ usageData.used_hours }}</span>
+            <span class="value-divider">/</span>
+            <span class="value-limit">{{ usageData.limit_hours }} hrs</span>
+          </div>
         </div>
       </div>
       
       <div class="progress-section">
-        <div class="progress-bar-track">
+        <div class="apple-track">
           <div 
-            class="progress-bar-fill" 
-            :style="{ width: `${usageData.percentage}%` }"
+            class="apple-fill" 
+            :class="fillGradientClass"
+            :style="{ width: `${Math.min(100, usageData.percentage)}%` }"
           >
-            <div class="progress-glow"></div>
+            <div class="specular-shine"></div>
           </div>
         </div>
-        <div class="progress-stats">
-          <span class="percentage-label">{{ usageData.percentage }}% used</span>
-          <span class="remaining-label">{{ Math.max(0, (usageData.limit_hours - usageData.used_hours).toFixed(2)) }} hrs left</span>
+        
+        <div class="progress-footer-stats">
+          <span class="percentage-pill" :class="usageSeverityClass">
+            {{ usageData.percentage }}% used
+          </span>
+          <span class="remaining-text">
+            {{ Math.max(0, (usageData.limit_hours - usageData.used_hours).toFixed(2)) }} hrs left
+          </span>
         </div>
       </div>
     </div>
 
-    <div v-else class="usage-footer-wrapper">
-      <div class="usage-footer-content">
-        <div class="footer-left">
-          <Activity size="16" class="text-primary animate-pulse-slow" />
-          <span class="footer-title">Speechmatics Transcription Limit</span>
-          <span class="footer-divider">|</span>
-          <span class="footer-detail font-medium">{{ usageData.used_hours }} hrs of {{ usageData.limit_hours }} hrs used ({{ usageData.percentage }}%)</span>
-        </div>
-        <div class="footer-right">
-          <div class="progress-bar-track footer-track">
-            <div 
-              class="progress-bar-fill" 
-              :style="{ width: `${usageData.percentage}%` }"
-            >
-              <div class="progress-glow"></div>
-            </div>
+    <!-- Footer Mode (Bottom Dock Toolbar) -->
+    <div v-else class="apple-usage-dock">
+      <div class="dock-content">
+        <div class="dock-left">
+          <div class="dock-icon-circle">
+            <Activity size="14" stroke-width="2.5" />
           </div>
-          <span class="remaining-text">{{ Math.max(0, (usageData.limit_hours - usageData.used_hours).toFixed(2)) }} hrs remaining</span>
+          <span class="dock-title">Speechmatics Transcription Limit</span>
+          <span class="dock-divider">•</span>
+          <span class="dock-detail">
+            <strong>{{ usageData.used_hours }}</strong> hrs of {{ usageData.limit_hours }} hrs used ({{ usageData.percentage }}%)
+          </span>
+        </div>
+        
+        <div class="dock-right">
+          <div class="dock-track">
+            <div 
+              class="dock-fill" 
+              :class="fillGradientClass"
+              :style="{ width: `${Math.min(100, usageData.percentage)}%` }"
+            ></div>
+          </div>
+          <span class="dock-remaining">
+            {{ Math.max(0, (usageData.limit_hours - usageData.used_hours).toFixed(2)) }} hrs remaining
+          </span>
         </div>
       </div>
     </div>
@@ -52,7 +70,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 import { Activity } from '@lucide/vue'
 
@@ -75,6 +93,22 @@ const fetchUsage = async () => {
   }
 }
 
+const usageSeverityClass = computed(() => {
+  if (!usageData.value) return 'severity-normal'
+  const p = usageData.value.percentage
+  if (p >= 90) return 'severity-danger'
+  if (p >= 75) return 'severity-warning'
+  return 'severity-normal'
+})
+
+const fillGradientClass = computed(() => {
+  if (!usageData.value) return 'fill-blue'
+  const p = usageData.value.percentage
+  if (p >= 90) return 'fill-red'
+  if (p >= 75) return 'fill-orange'
+  return 'fill-blue'
+})
+
 onMounted(() => {
   fetchUsage()
 })
@@ -85,39 +119,56 @@ onMounted(() => {
   width: 100%;
 }
 
-/* Card Mode */
-.usage-card {
+/* Apple Card Widget Mode */
+.apple-usage-widget {
   background: var(--bg-secondary);
   border-radius: var(--radius-lg);
   padding: 1.5rem;
-  border: 1px solid var(--neutral-200);
-  box-shadow: var(--shadow-sm);
-  transition: var(--transition);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.02);
+  transition: all 0.28s var(--apple-ease);
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
   gap: 1.25rem;
   min-height: 145px;
 }
 
-.usage-card:hover {
-  box-shadow: var(--shadow-md);
+.apple-usage-widget:hover {
+  box-shadow: 0 12px 30px -4px rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 113, 227, 0.25);
   transform: translateY(-2px);
 }
 
-.card-header {
+.widget-header {
   display: flex;
   align-items: center;
   gap: 1rem;
 }
 
-.icon-wrapper {
-  width: 48px;
-  height: 48px;
+.icon-glyph-container {
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #EEF2FF;
+  transition: var(--transition);
+}
+
+.severity-normal {
+  background-color: var(--apple-blue-light);
+  color: var(--apple-blue);
+}
+
+.severity-warning {
+  background-color: var(--apple-orange-light);
+  color: var(--apple-orange);
+}
+
+.severity-danger {
+  background-color: var(--apple-red-light);
+  color: var(--apple-red);
 }
 
 .header-info {
@@ -126,18 +177,38 @@ onMounted(() => {
   gap: 0.15rem;
 }
 
-.label {
-  font-size: 0.75rem;
+.widget-label {
+  font-size: 0.7rem;
   font-weight: 700;
   color: var(--text-muted);
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
 }
 
-.value {
-  font-size: 1.25rem;
+.value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.25rem;
+}
+
+.value-highlight {
+  font-size: 1.5rem;
   font-weight: 700;
   color: var(--text-primary);
-  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.value-divider {
+  color: var(--text-muted);
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+.value-limit {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 .progress-section {
@@ -146,60 +217,77 @@ onMounted(() => {
   gap: 0.5rem;
 }
 
-.progress-bar-track {
+/* Apple Liquid Progress Bar Track */
+.apple-track {
   width: 100%;
-  height: 8px;
-  background-color: var(--neutral-200);
+  height: 7px;
+  background-color: rgba(118, 118, 128, 0.12);
   border-radius: var(--radius-full);
   overflow: hidden;
   position: relative;
 }
 
-.progress-bar-fill {
+.apple-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--primary), var(--tertiary));
   border-radius: var(--radius-full);
-  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
 }
 
-.progress-glow {
+.fill-blue {
+  background: linear-gradient(90deg, #0071E3 0%, #30B0C7 100%);
+}
+
+.fill-orange {
+  background: linear-gradient(90deg, #FF9500 0%, #FFCC00 100%);
+}
+
+.fill-red {
+  background: linear-gradient(90deg, #FF3B30 0%, #FF6482 100%);
+}
+
+.specular-shine {
   position: absolute;
   top: 0;
+  left: 0;
   right: 0;
   bottom: 0;
-  width: 30px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4));
-  filter: blur(2px);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0) 100%);
 }
 
-.progress-stats {
+.progress-footer-stats {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   font-size: 0.75rem;
+}
+
+.percentage-pill {
   font-weight: 600;
-  color: var(--text-secondary);
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius-full);
+  font-size: 0.7rem;
 }
 
-.percentage-label {
-  color: var(--primary);
-}
-
-.remaining-label {
+.remaining-text {
   color: var(--text-muted);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 
-/* Footer Mode */
-.usage-footer-wrapper {
+/* Footer Dock Mode */
+.apple-usage-dock {
   width: 100%;
-  background: var(--bg-secondary);
-  border-top: 1px solid var(--neutral-200);
-  padding: 1rem 2rem;
-  box-shadow: 0 -4px 10px -4px rgba(0, 0, 0, 0.05);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
+  padding: 0.85rem 2rem;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.03);
   margin-top: 3rem;
 }
 
-.usage-footer-content {
+.dock-content {
   max-width: 1400px;
   margin: 0 auto;
   display: flex;
@@ -209,72 +297,84 @@ onMounted(() => {
   gap: 1rem;
 }
 
-.footer-left {
+.dock-left {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  font-size: 0.875rem;
+  gap: 0.65rem;
+  font-size: 0.84rem;
 }
 
-.footer-title {
-  font-weight: 700;
+.dock-icon-circle {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  background-color: var(--apple-blue-light);
+  color: var(--apple-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dock-title {
+  font-weight: 600;
   color: var(--text-primary);
-  font-family: var(--font-headline);
+  letter-spacing: -0.01em;
 }
 
-.footer-divider {
-  color: var(--neutral-200);
+.dock-divider {
+  color: rgba(0, 0, 0, 0.2);
 }
 
-.footer-detail {
+.dock-detail {
   color: var(--text-secondary);
 }
 
-.footer-right {
+.dock-detail strong {
+  color: var(--text-primary);
+}
+
+.dock-right {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.85rem;
 }
 
-.footer-track {
-  width: 150px;
+.dock-track {
+  width: 140px;
   height: 6px;
+  background-color: rgba(118, 118, 128, 0.14);
+  border-radius: var(--radius-full);
+  overflow: hidden;
 }
 
-.remaining-text {
+.dock-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width 0.6s ease;
+}
+
+.dock-remaining {
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 768px) {
-  .usage-footer-content {
+  .dock-content {
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.75rem;
+    gap: 0.6rem;
   }
-  
-  .footer-right {
+
+  .dock-right {
     width: 100%;
     justify-content: space-between;
   }
-  
-  .footer-track {
+
+  .dock-track {
     flex: 1;
     max-width: 200px;
-  }
-}
-
-.animate-pulse-slow {
-  animation: pulse 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: .5;
   }
 }
 </style>

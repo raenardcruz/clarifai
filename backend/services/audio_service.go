@@ -108,7 +108,15 @@ func ProcessSpeechmaticsJob(jobID string, filePath string) {
 		recording.Status = "summarizing"
 		db.Save(&recording)
 
-		GenerateSummarySync(recording.ID, db, settings.ExecutiveSummaryPrompt)
+		prompt := settings.ExecutiveSummaryPrompt
+		if recording.IsMedical {
+			if settings.MedicalSummaryPrompt != "" {
+				prompt = settings.MedicalSummaryPrompt
+			} else {
+				prompt = models.DefaultMedicalSummaryPrompt
+			}
+		}
+		GenerateSummarySync(recording.ID, db, prompt)
 	} else {
 		recording.Status = "completed"
 		db.Save(&recording)
@@ -124,38 +132,69 @@ func ProcessSpeechmaticsJob(jobID string, filePath string) {
 	cleanupFile(filePath)
 }
 
+
 func runSpeechmaticsPipeline(jobID, filePath, apiKey string, recording *models.Recording, db *gorm.DB) error {
 	url := "https://asr.api.speechmatics.com/v2/jobs"
 
-	config := map[string]interface{}{
-		"type": "transcription",
-		"transcription_config": map[string]interface{}{
-			"model":       "melia-1",
-			"language":    "multi",
-			"diarization": "speaker",
-		},
+	buildMultipartBody := func(useMedical bool) (*bytes.Buffer, *multipart.Writer, error) {
+		config := map[string]interface{}{
+			"type": "transcription",
+			"transcription_config": map[string]interface{}{
+				"model":       "melia-1",
+				"language":    "multi",
+				"diarization": "speaker",
+			},
+		}
+
+		if useMedical {
+			config["transcription_config"] = map[string]interface{}{
+				"language":    "en",
+				"domain":      "medical",
+				"diarization": "speaker",
+			}
+		}
+
+		configJSON, err := json.Marshal(config)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		body := &bytes.Buffer{}
+		writer := multipart.NewWriter(body)
+
+		configWriter, err := writer.CreatePart(map[string][]string{
+			"Content-Disposition": {`form-data; name="config"`},
+			"Content-Type":        {`application/json`},
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		if _, err := configWriter.Write(configJSON); err != nil {
+			return nil, nil, err
+		}
+
+		file, err := os.Open(filePath)
+		if err != nil {
+			return nil, nil, err
+		}
+		defer file.Close()
+
+		fileWriter, err := writer.CreateFormFile("data_file", filepath.Base(filePath))
+		if err != nil {
+			return nil, nil, err
+		}
+		if _, err := io.Copy(fileWriter, file); err != nil {
+			return nil, nil, err
+		}
+		writer.Close()
+
+		return body, writer, nil
 	}
 
-	configJSON, _ := json.Marshal(config)
-
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-
-	configWriter, _ := writer.CreatePart(map[string][]string{
-		"Content-Disposition": {`form-data; name="config"`},
-		"Content-Type":        {`application/json`},
-	})
-	configWriter.Write(configJSON)
-
-	file, err := os.Open(filePath)
+	body, writer, err := buildMultipartBody(recording.IsMedical)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
-
-	fileWriter, _ := writer.CreateFormFile("data_file", filepath.Base(filePath))
-	io.Copy(fileWriter, file)
-	writer.Close()
 
 	req, _ := http.NewRequest("POST", url, body)
 	req.Header.Set("Authorization", "Bearer "+apiKey)
@@ -168,12 +207,33 @@ func runSpeechmaticsPipeline(jobID, filePath, apiKey string, recording *models.R
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusCreated && recording.IsMedical {
+		// If medical domain is not supported by the account/tier, fallback to standard transcription gracefully
+		respBody, _ := io.ReadAll(resp.Body)
+		log.Printf("Medical domain submission status %d (%s), falling back to standard Speechmatics config...", resp.StatusCode, string(respBody))
+
+		body, writer, err = buildMultipartBody(false)
+		if err == nil {
+			req, _ = http.NewRequest("POST", url, body)
+			req.Header.Set("Authorization", "Bearer "+apiKey)
+			req.Header.Set("Content-Type", writer.FormDataContentType())
+			fallbackResp, err2 := client.Do(req)
+			if err2 == nil {
+				defer fallbackResp.Body.Close()
+				if fallbackResp.StatusCode == http.StatusCreated {
+					resp = fallbackResp
+				}
+			}
+		}
+	}
+
 	if resp.StatusCode != http.StatusCreated {
 		respBody, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("failed to submit job (status %d): %s", resp.StatusCode, string(respBody))
 	}
 
 	var jobResponse SpeechmaticsJobResponse
+
 	json.NewDecoder(resp.Body).Decode(&jobResponse)
 
 	speechmaticsJobID := jobResponse.ID
@@ -349,7 +409,13 @@ func GenerateSummary(recordingID string, instruction string) {
 	var settings models.Settings
 	db.First(&settings)
 	prompt := settings.ExecutiveSummaryPrompt
-	if prompt == "" {
+	if recording.IsMedical {
+		if settings.MedicalSummaryPrompt != "" {
+			prompt = settings.MedicalSummaryPrompt
+		} else {
+			prompt = models.DefaultMedicalSummaryPrompt
+		}
+	} else if prompt == "" {
 		prompt = "Summarize this."
 	}
 
@@ -385,7 +451,7 @@ func GenerateSummarySync(recordingID string, db *gorm.DB, prompt string) {
 	}
 	fullText := fullTextBuilder.String()
 
-	aiTitle := GenerateTitle(fullText)
+	aiTitle := GenerateTitleForRecording(fullText, recording.IsMedical)
 	if aiTitle != "" {
 		recording.Title = aiTitle
 	}

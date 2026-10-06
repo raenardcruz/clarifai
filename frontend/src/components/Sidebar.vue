@@ -1,42 +1,82 @@
 <template>
   <aside class="sidebar" :class="{ 'sidebar-open': isSidebarOpen }">
+    <!-- Brand Header -->
     <div class="logo-container">
-      <div class="logo-icon"><Sparkles size="20" color="#fff" /></div>
+      <div class="logo-icon-wrapper">
+        <div class="logo-icon">
+          <Sparkles size="20" color="#ffffff" stroke-width="2.5" />
+        </div>
+      </div>
       <div class="logo-text">
-        <h2>ClarifAi</h2>
-        <span>Elevate your productivity</span>
+        <div class="logo-title-row">
+          <h2>ClarifAi</h2>
+          <span class="pro-badge">PRO</span>
+        </div>
+        <span class="logo-subtitle">Meeting Intelligence</span>
       </div>
     </div>
 
-    <nav class="nav-menu">
-      <router-link to="/" class="nav-item" active-class="active">
-        <LayoutDashboard size="20" />
-        <span>Dashboard</span>
-      </router-link>
-      <router-link to="/recordings" class="nav-item" active-class="active">
-        <Mic size="20" />
-        <span>Recordings</span>
-      </router-link>
-      <router-link v-if="authStore.isAdmin" to="/users" class="nav-item" active-class="active">
-        <Users size="20" />
-        <span>Users</span>
-      </router-link>
-      <router-link v-if="authStore.isAdmin" to="/settings" class="nav-item" active-class="active">
-        <Settings size="20" />
-        <span>Settings</span>
-      </router-link>
-    </nav>
-
-    <div class="sidebar-footer">
-      <button class="btn btn-primary w-full new-recording-btn" @click="isRecordingModalOpen = true">
-        <Plus size="18" />
+    <!-- Quick Action Button -->
+    <div class="quick-action-section">
+      <button class="apple-primary-btn w-full" @click="isRecordingModalOpen = true">
+        <div class="btn-icon-circle">
+          <Plus size="16" stroke-width="2.5" />
+        </div>
         <span>New Recording</span>
       </button>
+    </div>
+
+    <!-- macOS Navigation Menu -->
+    <nav class="nav-menu">
+      <div class="nav-section-label">WORKSPACE</div>
       
-      <button class="nav-item mt-4 w-full justify-start text-left bg-transparent border-none" @click="authStore.logout()">
-        <LogOut size="20" />
-        <span>Logout</span>
-      </button>
+      <router-link to="/" class="nav-item" active-class="active">
+        <div class="nav-icon-badge badge-blue">
+          <LayoutDashboard size="17" stroke-width="2.2" />
+        </div>
+        <span class="nav-text">Dashboard</span>
+      </router-link>
+
+      <router-link to="/recordings" class="nav-item" active-class="active">
+        <div class="nav-icon-badge badge-purple">
+          <Mic size="17" stroke-width="2.2" />
+        </div>
+        <span class="nav-text">All Recordings</span>
+      </router-link>
+
+      <template v-if="authStore.isAdmin">
+        <div class="nav-section-label mt-6">MANAGEMENT</div>
+
+        <router-link to="/users" class="nav-item" active-class="active">
+          <div class="nav-icon-badge badge-green">
+            <Users size="17" stroke-width="2.2" />
+          </div>
+          <span class="nav-text">Users</span>
+        </router-link>
+
+        <router-link to="/settings" class="nav-item" active-class="active">
+          <div class="nav-icon-badge badge-slate">
+            <Settings size="17" stroke-width="2.2" />
+          </div>
+          <span class="nav-text">Settings</span>
+        </router-link>
+      </template>
+    </nav>
+
+    <!-- Sidebar Footer / User Profile -->
+    <div class="sidebar-footer">
+      <div class="user-card">
+        <div class="user-avatar-initials">
+          {{ authStore.user?.email?.[0].toUpperCase() || 'U' }}
+        </div>
+        <div class="user-card-info">
+          <span class="user-card-name">{{ authStore.user?.email || 'User' }}</span>
+          <span class="user-card-role">{{ authStore.user?.role === 'admin' ? 'Administrator' : 'Standard Member' }}</span>
+        </div>
+        <button class="logout-icon-btn" @click="authStore.logout()" title="Log out">
+          <LogOut size="16" />
+        </button>
+      </div>
     </div>
 
     <!-- Teleport Modal out of sidebar to avoid z-index issues -->
@@ -64,92 +104,290 @@ const isRecordingModalOpen = ref(false)
   top: 0;
   bottom: 0;
   width: var(--sidebar-width);
-  background-color: var(--white);
-  border-right: 1px solid var(--neutral-200);
+  background-color: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border-right: 1px solid rgba(0, 0, 0, 0.07);
   display: flex;
   flex-direction: column;
-  padding: 2rem 1.5rem;
+  padding: 1.5rem 1rem 1.25rem 1rem;
   z-index: 40;
-  transition: transform 0.3s ease;
+  transition: transform 0.28s var(--apple-ease);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .logo-container {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  margin-bottom: 3rem;
+  gap: 0.85rem;
+  padding: 0.25rem 0.5rem 1.5rem 0.5rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.logo-icon-wrapper {
+  position: relative;
 }
 
 .logo-icon {
-  width: 36px;
-  height: 36px;
-  background: linear-gradient(135deg, var(--primary), var(--tertiary));
-  border-radius: 10px;
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, #0071E3 0%, #AF52DE 100%);
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--shadow-glow);
+  box-shadow: 0 4px 12px rgba(0, 113, 227, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.3) inset;
+}
+
+.logo-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .logo-text h2 {
-  font-size: 1.25rem;
-  color: var(--primary);
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-primary);
   margin: 0;
+  letter-spacing: -0.025em;
   line-height: 1.2;
 }
 
-.logo-text span {
+.pro-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #0071E3, #5856D6);
+  color: #ffffff;
+  padding: 0.12rem 0.4rem;
+  border-radius: var(--radius-full);
+  letter-spacing: 0.04em;
+}
+
+.logo-subtitle {
   font-size: 0.75rem;
   color: var(--text-muted);
+  font-weight: 500;
+}
+
+.quick-action-section {
+  padding: 1rem 0.25rem;
+}
+
+.apple-primary-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  background: linear-gradient(180deg, #0077ED 0%, #0071E3 100%);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 4px 14px rgba(0, 113, 227, 0.28), 0 1px 1px rgba(255, 255, 255, 0.4) inset;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.apple-primary-btn:hover {
+  background: linear-gradient(180deg, #0A84FF 0%, #0077ED 100%);
+  box-shadow: 0 6px 18px rgba(0, 113, 227, 0.36);
+  transform: translateY(-1px);
+}
+
+.apple-primary-btn:active {
+  transform: scale(0.98);
+}
+
+.btn-icon-circle {
+  width: 22px;
+  height: 22px;
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .nav-menu {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.3rem;
   flex: 1;
+  padding-top: 0.5rem;
+}
+
+.nav-section-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  padding: 0.5rem 0.75rem 0.25rem 0.75rem;
+}
+
+.mt-6 {
+  margin-top: 1.25rem;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.875rem 1rem;
-  border-radius: var(--radius-lg);
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
+  font-size: 0.88rem;
   font-weight: 500;
   transition: var(--transition);
   cursor: pointer;
+  text-decoration: none;
 }
 
 .nav-item:hover {
-  background-color: var(--neutral-50);
-  color: var(--primary);
+  background-color: rgba(0, 0, 0, 0.04);
+  color: var(--text-primary);
 }
 
 .nav-item.active {
-  background-color: var(--primary);
-  color: var(--white);
-  box-shadow: 0 4px 14px 0 rgba(79, 70, 229, 0.39);
+  background-color: rgba(0, 113, 227, 0.1);
+  color: var(--apple-blue);
+  font-weight: 600;
+}
+
+.nav-icon-badge {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+
+.badge-blue {
+  background-color: rgba(0, 113, 227, 0.1);
+  color: #0071E3;
+}
+
+.badge-purple {
+  background-color: rgba(175, 82, 222, 0.1);
+  color: #AF52DE;
+}
+
+.badge-green {
+  background-color: rgba(52, 199, 89, 0.12);
+  color: #34C759;
+}
+
+.badge-slate {
+  background-color: rgba(142, 142, 147, 0.15);
+  color: #636366;
+}
+
+.nav-item.active .badge-blue {
+  background-color: #0071E3;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 113, 227, 0.3);
+}
+
+.nav-item.active .badge-purple {
+  background-color: #AF52DE;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(175, 82, 222, 0.3);
+}
+
+.nav-item.active .badge-green {
+  background-color: #34C759;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(52, 199, 89, 0.3);
+}
+
+.nav-item.active .badge-slate {
+  background-color: #636366;
+  color: #ffffff;
+}
+
+.nav-text {
+  flex: 1;
 }
 
 .sidebar-footer {
   margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
 }
 
-.new-recording-btn {
+.user-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
   border-radius: var(--radius-md);
-  padding: 1rem;
+  background: rgba(0, 0, 0, 0.025);
+  border: 1px solid rgba(0, 0, 0, 0.04);
 }
 
-.mt-4 { margin-top: 1rem; }
-.text-left { text-align: left; }
-.justify-start { justify-content: flex-start; }
+.user-avatar-initials {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, #0071E3, #30B0C7);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.user-card-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex: 1;
+}
+
+.user-card-name {
+  font-size: 0.825rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-card-role {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.logout-icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.4rem;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+}
+
+.logout-icon-btn:hover {
+  background: rgba(255, 59, 48, 0.1);
+  color: var(--apple-red);
+}
 
 @media (max-width: 768px) {
   .sidebar {
     transform: translateX(-100%);
-    box-shadow: var(--shadow-lg);
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.15);
   }
   
   .sidebar.sidebar-open {

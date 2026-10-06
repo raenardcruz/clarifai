@@ -1,144 +1,343 @@
 <template>
   <div class="recording-show-page-wrapper" v-if="recording">
     <div class="recording-show-page">
+      <!-- Apple Header & Breadcrumb -->
       <div class="header-section">
-        <div class="breadcrumb">
-          <router-link to="/recordings">Recordings</router-link>
+        <div class="breadcrumb-bar">
+          <router-link to="/recordings" class="back-link">
+            <ChevronLeft size="16" />
+            <span>Recordings</span>
+          </router-link>
           <span class="separator">/</span>
-          <span class="current">{{ recording.title }}</span>
+          <span class="current-title">{{ recording.title }}</span>
         </div>
 
         <div class="title-row">
-          <div>
+          <div class="title-meta-block">
             <h1 class="page-title">{{ recording.title }}</h1>
-            <div class="meta-info">
-              <span class="meta-item"><Calendar size="14" /> {{ formattedDate }}</span>
-              <span class="meta-item"><Clock size="14" /> {{ formattedDuration }}</span>
-              <span class="status-badge" :class="statusClass">{{ formattedStatus }}</span>
+            
+            <div class="meta-pill-group">
+              <span class="meta-pill">
+                <Calendar size="13" />
+                <span>{{ formattedDate }}</span>
+              </span>
+              <span class="meta-pill">
+                <Clock size="13" />
+                <span class="font-tabular">{{ formattedDuration }}</span>
+              </span>
+              <span class="meta-pill" v-if="speakerCount > 0">
+                <Users size="13" />
+                <span>{{ speakerCount }} {{ speakerCount === 1 ? 'Speaker' : 'Speakers' }}</span>
+              </span>
+              <button 
+                class="meta-pill medical-toggle-pill" 
+                :class="{ 'is-active': recording.is_medical }"
+                @click="toggleMedicalFlag"
+                :title="recording.is_medical ? 'Medical Conversation (Click to unmark)' : 'Click to flag as Medical Conversation'"
+              >
+                <Stethoscope size="13" />
+                <span>{{ recording.is_medical ? 'Medical Conversation' : 'Mark as Medical' }}</span>
+              </button>
+              <span class="status-pill" :class="statusClass">
+                <span class="beacon-dot" :class="beaconClass"></span>
+                <span>{{ formattedStatus }}</span>
+              </span>
             </div>
           </div>
+
           
-          <div class="action-buttons gap-2 flex">
-            <Button label="Share" icon="pi pi-share-alt" severity="secondary" @click="shareLink" />
-            <Button label="Delete" icon="pi pi-trash" severity="danger" @click="deleteRecording" />
+          <!-- Top Action Bar -->
+          <div class="action-buttons-group">
+            <button class="apple-btn-secondary" @click="shareLink" title="Share public link">
+              <Share2 size="15" />
+              <span>Share</span>
+            </button>
+            
+            <a :href="`/api/recordings/${recording.id}/download/${activeTab}`" class="no-underline">
+              <button class="apple-btn-secondary" title="Export file">
+                <Download size="15" />
+                <span>Export</span>
+              </button>
+            </a>
+
+            <button class="apple-btn-danger" @click="deleteRecording" title="Delete recording">
+              <Trash2 size="15" />
+              <span>Delete</span>
+            </button>
           </div>
         </div>
       </div>
 
-      <div class="tabs-container-custom">
-        <Tabs v-model:value="activeTab" class="w-full">
-          <div class="tabs-header border-b border-gray-200 mb-4 pb-2">
-            <TabList>
-              <Tab value="transcript">Transcript</Tab>
-              <Tab value="summary">AI Summary</Tab>
-            </TabList>
-            
-            <div class="tab-actions flex gap-2">
-              <Button v-if="activeTab === 'transcript'" label="Identify Speakers" severity="secondary" size="small" @click="identifySpeakers" :loading="isIdentifyingSpeakers" :disabled="!recording.segments || recording.segments.length === 0">
-                <template #icon>
-                  <UserCheck size="14" v-if="!isIdentifyingSpeakers" class="mr-1" />
-                </template>
-              </Button>
-              <Button v-if="activeTab === 'summary'" label="Regenerate" severity="secondary" size="small" @click="openSummaryModal" :loading="isGenerating">
-                <template #icon>
-                  <Wand2 size="14" v-if="!isGenerating" class="mr-1" />
-                </template>
-              </Button>
-              <Button v-if="activeTab === 'summary' && recording?.summary_md" label="Print" severity="secondary" size="small" @click="printSummary" class="no-print">
-                <template #icon>
-                  <Printer size="14" class="mr-1" />
-                </template>
-              </Button>
-              <a :href="`/api/recordings/${recording.id}/download/${activeTab}`" class="no-underline">
-                <Button label="Export" icon="pi pi-download" severity="secondary" size="small" />
-              </a>
+      <!-- Apple macOS Segmented Navigation Bar -->
+      <div class="tabs-toolbar">
+        <div class="segmented-control-macos">
+          <button 
+            class="segment-item" 
+            :class="{ active: activeTab === 'summary' }"
+            @click="activeTab = 'summary'"
+          >
+            <Sparkles size="15" class="tab-icon" />
+            <span>Executive Summary</span>
+          </button>
+          <button 
+            class="segment-item" 
+            :class="{ active: activeTab === 'transcript' }"
+            @click="activeTab = 'transcript'"
+          >
+            <FileText size="15" class="tab-icon" />
+            <span>Full Transcript</span>
+            <span class="counter-badge" v-if="recording.segments?.length">{{ recording.segments.length }}</span>
+          </button>
+        </div>
+
+        <div class="tab-context-actions">
+          <!-- Summary Actions -->
+          <template v-if="activeTab === 'summary'">
+            <button 
+              class="apple-tool-btn" 
+              @click="copySummary" 
+              v-if="recording.summary_md" 
+              title="Copy summary text"
+            >
+              <Check size="14" v-if="copiedSummary" class="text-green" />
+              <Copy size="14" v-else />
+              <span>{{ copiedSummary ? 'Copied!' : 'Copy Summary' }}</span>
+            </button>
+
+            <button 
+              class="apple-tool-btn" 
+              @click="openSummaryModal" 
+              :disabled="isGenerating"
+            >
+              <Loader2 size="14" class="animate-spin text-blue" v-if="isGenerating" />
+              <Wand2 size="14" v-else />
+              <span>{{ recording.summary_md ? 'Regenerate' : 'Generate Summary' }}</span>
+            </button>
+
+            <button 
+              class="apple-tool-btn no-print" 
+              @click="printSummary" 
+              v-if="recording.summary_md"
+            >
+              <Printer size="14" />
+              <span>Print / PDF</span>
+            </button>
+          </template>
+
+          <!-- Transcript Actions -->
+          <template v-if="activeTab === 'transcript'">
+            <div class="transcript-search-box">
+              <Search size="14" class="search-ico" />
+              <input 
+                v-model="transcriptSearch" 
+                type="text" 
+                placeholder="Search transcript..." 
+                class="transcript-search-input"
+              />
+              <button v-if="transcriptSearch" @click="transcriptSearch = ''" class="clear-mini-btn">✕</button>
+            </div>
+
+            <button 
+              class="apple-tool-btn" 
+              @click="identifySpeakers" 
+              :disabled="isIdentifyingSpeakers || !recording.segments || recording.segments.length === 0"
+              title="Detect speaker names with AI"
+            >
+              <Loader2 size="14" class="animate-spin" v-if="isIdentifyingSpeakers" />
+              <UserCheck size="14" v-else />
+              <span>Identify Speakers</span>
+            </button>
+          </template>
+        </div>
+      </div>
+
+      <!-- Tab Content Area -->
+      <div class="tab-content-container">
+        <!-- AI Summary Panel (Apple Notes / Pages Document) -->
+        <div v-if="activeTab === 'summary'" class="summary-view">
+          <!-- Processing State -->
+          <div v-if="isProcessing || isGenerating" class="apple-doc-card generating-card">
+            <div class="ambient-sparkle-halo">
+              <Loader2 size="50" class="animate-spin text-blue" />
+            </div>
+            <h3 class="generating-title">ClarifAi is analyzing meeting insights...</h3>
+            <p class="generating-subtitle">
+              Synthesizing conversations, attributing speaker viewpoints, and extracting key decisions.
+            </p>
+          </div>
+
+          <!-- Document Rendered State -->
+          <div class="apple-doc-card" v-else-if="recording.summary_md">
+            <div class="doc-header screen-summary-header">
+              <div class="doc-title-group">
+                <div class="doc-icon-badge" :class="{ 'medical-icon-badge': recording.is_medical }">
+                  <Stethoscope v-if="recording.is_medical" size="18" class="text-emerald-600" />
+                  <Sparkles v-else size="18" color="#0071E3" />
+                </div>
+                <div>
+                  <h2 class="doc-heading">{{ recording.is_medical ? 'Clinical SOAP Note' : 'Executive Summary' }}</h2>
+                  <span class="doc-subheading">{{ recording.is_medical ? 'Structured Clinical Consultation Summary' : 'Generated by ClarifAi Local LLM' }}</span>
+                </div>
+              </div>
+
+
+              <div class="doc-meta-stats">
+                <span class="meta-stat-item">{{ wordCount }} words</span>
+                <span class="meta-stat-divider">•</span>
+                <span class="meta-stat-item">{{ readingTime }} min read</span>
+              </div>
+            </div>
+
+            <div class="markdown-content" v-html="parsedSummary"></div>
+          </div>
+
+          <!-- Empty Summary State -->
+          <div v-else class="apple-doc-card empty-summary-card">
+            <div class="empty-sparkle-circle">
+              <Wand2 size="32" stroke-width="1.8" />
+            </div>
+            <h3>No Executive Summary Yet</h3>
+            <p>Generate structured meeting notes, decisions, and action items with one click.</p>
+            <button class="apple-primary-btn mt-4" @click="openSummaryModal">
+              <Sparkles size="16" />
+              <span>Generate Summary</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Full Transcript Panel (Apple Messages / Dialogue Timeline) -->
+        <div v-if="activeTab === 'transcript'" class="transcript-view">
+          <div v-if="filteredSegments.length > 0" class="segments-timeline">
+            <div 
+              v-for="segment in filteredSegments" 
+              :key="segment.id" 
+              class="segment-card"
+            >
+              <div class="segment-header">
+                <div class="speaker-profile">
+                  <div class="speaker-avatar" :style="{ background: getSpeakerColor(segment.speaker) }">
+                    {{ getSpeakerInitials(segment.speaker) }}
+                  </div>
+                  
+                  <div class="speaker-name-container">
+                    <input 
+                      type="text" 
+                      class="speaker-name-input" 
+                      v-model="segment.speaker" 
+                      @focus="startEditingSpeaker(segment.speaker)" 
+                      @blur="updateSegment(segment)" 
+                      title="Click to rename speaker"
+                    />
+                    <Pencil size="11" class="pencil-icon" />
+                  </div>
+                </div>
+
+                <span class="segment-timestamp font-tabular">
+                  {{ formatTimestamp(segment.start) }}
+                </span>
+              </div>
+
+              <div class="segment-body">
+                <textarea 
+                  class="segment-textarea" 
+                  v-model="segment.text" 
+                  @blur="updateSegment(segment)" 
+                  rows="2"
+                  @input="autoGrow"
+                ></textarea>
+              </div>
             </div>
           </div>
 
-          <TabPanels>
-            <TabPanel value="transcript">
-              <div class="transcript-view">
-                <div v-for="segment in recording.segments" :key="segment.id" class="segment-block">
-                  <div class="segment-header">
-                    <div class="speaker-info">
-                      <div class="speaker-avatar" :style="{ backgroundColor: getSpeakerColor(segment.speaker) }">
-                        {{ getSpeakerInitials(segment.speaker) }}
-                      </div>
-                      <div class="speaker-name-wrapper">
-                        <InputText type="text" class="speaker-name-input" v-model="segment.speaker" @focus="startEditingSpeaker(segment.speaker)" @blur="updateSegment(segment)" />
-                        <Pencil size="12" class="edit-icon" />
-                      </div>
-                    </div>
-                    <div class="timestamp">{{ formatTimestamp(segment.start) }}</div>
-                  </div>
-                  <div class="segment-text">
-                    <Textarea class="text-edit-input w-full" v-model="segment.text" @blur="updateSegment(segment)" rows="2" autoResize />
-                  </div>
-                </div>
-                <div v-if="!recording.segments || recording.segments.length === 0" class="text-center py-10 text-gray-500">
-                  No transcript available yet.
-                </div>
-              </div>
-            </TabPanel>
-
-            <TabPanel value="summary">
-              <div class="summary-view">
-                <div v-if="isProcessing || isGenerating" class="summary-card glass flex flex-col items-center justify-center py-20 text-center">
-                  <div class="sparkle-loader mb-6">
-                    <Loader2 size="100" class="text-tertiary animate-spin absolute-center" />
-                  </div>
-                  <h3 class="text-lg font-bold mb-2">ClarifAi is generating meeting insights...</h3>
-                  <p class="text-sm text-gray-500 max-w-sm">We're analyzing the conversation, capturing key topics, and drafting your summary.</p>
-                </div>
-                <div class="summary-card glass" v-else-if="recording.summary_md">
-                  <div class="flex items-center justify-between mb-4 screen-summary-header">
-                    <div class="flex items-center gap-2">
-                      <Sparkles size="20" class="text-tertiary" />
-                      <h2 class="text-xl font-bold text-tertiary">Executive Summary</h2>
-                    </div>
-                  </div>
-                  <div class="markdown-content" v-html="parsedSummary"></div>
-                </div>
-                <div v-else class="text-center py-20 text-gray-500 flex flex-col items-center">
-                  <Wand2 size="48" class="text-gray-300 mb-4" />
-                  <p>No summary generated yet.</p>
-                  <Button label="Generate Summary" severity="primary" class="mt-4" @click="openSummaryModal" :disabled="isGenerating" />
-                </div>
-              </div>
-            </TabPanel>
-          </TabPanels>
-        </Tabs>
+          <!-- Empty Search / No Segments -->
+          <div v-else class="apple-doc-card empty-transcript-card">
+            <p v-if="transcriptSearch">No segments found matching "{{ transcriptSearch }}".</p>
+            <p v-else>No transcript segments available for this recording.</p>
+          </div>
+        </div>
       </div>
     </div>
+
+    <!-- Speechmatics Usage Footer -->
     <SpeechmaticsUsage type="footer" />
 
-    <Dialog v-model:visible="showSummaryModal" modal header="Generate AI Summary" :style="{ width: '90vw', maxWidth: '600px' }">
-      <div class="flex flex-col gap-4 py-2">
-        <p class="text-sm text-gray-600">
-          Add optional special instructions or focus topics to append to the summary prompt.
+    <!-- Apple AI Prompt Dialog -->
+    <Dialog 
+      v-model:visible="showSummaryModal" 
+      modal 
+      header="Generate AI Summary" 
+      :style="{ width: '90vw', maxWidth: '580px' }"
+    >
+      <div class="modal-dialog-content">
+        <p class="dialog-desc">
+          Customize instructions or select quick focus topics for the AI summarization engine.
         </p>
-        <div class="flex flex-col gap-2">
-          <label for="special-instruction" class="font-semibold text-sm">Special Instructions (Optional)</label>
-          <Textarea
+
+        <!-- Medical Conversation Toggle in Modal -->
+        <div 
+          class="modal-medical-toggle" 
+          :class="{ 'is-active': isMedicalSummary }" 
+          @click="isMedicalSummary = !isMedicalSummary"
+        >
+          <div class="modal-medical-toggle-info">
+            <div class="modal-medical-icon">
+              <Stethoscope size="16" />
+            </div>
+            <div class="modal-medical-text">
+              <span class="modal-medical-title">Clinical SOAP / Medical Note</span>
+              <span class="modal-medical-sub">Format as Subjective, Objective, Assessment, and Plan</span>
+            </div>
+          </div>
+          <div class="apple-toggle-switch-sm" :class="{ checked: isMedicalSummary }">
+            <span class="switch-handle-sm"></span>
+          </div>
+        </div>
+
+        <!-- Quick Focus Topic Pills -->
+
+        <div class="quick-prompt-chips">
+          <span class="chips-label">Quick Presets:</span>
+          <button 
+            type="button" 
+            class="chip-btn" 
+            v-for="preset in promptPresets" 
+            :key="preset.label"
+            @click="applyPreset(preset.text)"
+          >
+            {{ preset.label }}
+          </button>
+        </div>
+
+        <div class="form-group mt-3">
+          <label for="special-instruction" class="field-label">Special Focus Instructions</label>
+          <textarea
             id="special-instruction"
             v-model="specialInstruction"
             rows="4"
-            placeholder="e.g. Focus on action items for the marketing team, key decision points, or specific meeting topics..."
-            class="w-full"
-            autoResize
-          />
+            placeholder="e.g. Emphasize marketing deliverables, key deadlines, and assigned action owners..."
+            class="apple-textarea"
+          ></textarea>
         </div>
       </div>
+
       <template #footer>
-        <div class="flex justify-end gap-2 pt-2">
-          <Button label="Cancel" severity="secondary" @click="showSummaryModal = false" />
-          <Button label="Generate Summary" icon="pi pi-sparkles" severity="primary" @click="submitRegenerateSummary" :loading="isGenerating" />
+        <div class="dialog-footer-actions">
+          <button class="apple-btn-secondary" @click="showSummaryModal = false">
+            Cancel
+          </button>
+          <button class="apple-primary-btn" @click="submitRegenerateSummary" :disabled="isGenerating">
+            <Sparkles size="15" />
+            <span>Generate Summary</span>
+          </button>
         </div>
       </template>
     </Dialog>
   </div>
-  <div v-else class="flex justify-center items-center h-screen">
-    <Loader2 class="animate-spin text-primary" size="40" />
+
+  <!-- Loading Full Page -->
+  <div v-else class="full-page-loader">
+    <Loader2 class="animate-spin text-blue" size="44" />
+    <span class="loader-label">Loading recording...</span>
   </div>
 </template>
 
@@ -149,17 +348,13 @@ import axios from 'axios'
 import moment from 'moment'
 import { marked } from 'marked'
 import { useToast } from 'primevue/usetoast'
-import { Calendar, Clock, Share2, Download, Wand2, Sparkles, Loader2, Pencil, Trash2, UserCheck, Printer } from '@lucide/vue'
-import { useIntervalFn, useClipboard, useTitle } from '@vueuse/core'
-import Button from 'primevue/button'
+import { 
+  Calendar, Clock, Share2, Download, Wand2, Sparkles, Loader2, 
+  Pencil, Trash2, UserCheck, Printer, ChevronLeft, Users, 
+  FileText, Copy, Check, Search, Stethoscope 
+} from '@lucide/vue'
+import { useIntervalFn, useTitle } from '@vueuse/core'
 import Dialog from 'primevue/dialog'
-import InputText from 'primevue/inputtext'
-import Textarea from 'primevue/textarea'
-import Tabs from 'primevue/tabs'
-import TabList from 'primevue/tablist'
-import Tab from 'primevue/tab'
-import TabPanels from 'primevue/tabpanels'
-import TabPanel from 'primevue/tabpanel'
 import SpeechmaticsUsage from '../components/SpeechmaticsUsage.vue'
 
 const route = useRoute()
@@ -171,23 +366,79 @@ const isGenerating = ref(false)
 const isIdentifyingSpeakers = ref(false)
 const editingSpeakerOrigName = ref('')
 const showSummaryModal = ref(false)
+const isMedicalSummary = ref(false)
 const specialInstruction = ref('')
+const copiedSummary = ref(false)
+const transcriptSearch = ref('')
 
-const { copy } = useClipboard()
-const title = computed(() => recording.value ? `${recording.value.title} - ClarifAi` : 'ClarifAi')
+const title = computed(() => recording.value ? `${recording.value.title} — ClarifAi` : 'ClarifAi')
 useTitle(title)
+
+const promptPresets = [
+  { label: 'Clinical SOAP Note', text: 'Structure as a comprehensive clinical SOAP Note with Subjective history, Objective clinical observations, Assessment, and Plan.' },
+  { label: 'Action Items & Next Steps', text: 'Highlight key action items, tasks, assignees, and deadlines in explicit detail.' },
+  { label: 'Key Decisions', text: 'Focus exclusively on critical decisions made during this meeting and their rationale.' },
+  { label: 'Executive Brief', text: 'Provide a concise, high-level summary suitable for executive leadership review.' },
+  { label: 'Technical Details', text: 'Capture architectural, technical, and engineering details thoroughly.' }
+]
+
+
+const applyPreset = (text) => {
+  if (specialInstruction.value) {
+    specialInstruction.value += ' ' + text
+  } else {
+    specialInstruction.value = text
+  }
+}
+
+const autoGrow = (e) => {
+  e.target.style.height = 'auto'
+  e.target.style.height = (e.target.scrollHeight) + 'px'
+}
+
+const speakerCount = computed(() => {
+  if (!recording.value?.segments) return 0
+  const unique = new Set(recording.value.segments.map(s => s.speaker))
+  return unique.size
+})
+
+const wordCount = computed(() => {
+  if (!recording.value?.summary_md) return 0
+  return recording.value.summary_md.trim().split(/\s+/).length
+})
+
+const readingTime = computed(() => {
+  return Math.max(1, Math.ceil(wordCount.value / 200))
+})
+
+const filteredSegments = computed(() => {
+  if (!recording.value?.segments) return []
+  if (!transcriptSearch.value) return recording.value.segments
+  const q = transcriptSearch.value.toLowerCase()
+  return recording.value.segments.filter(s => 
+    s.speaker.toLowerCase().includes(q) || s.text.toLowerCase().includes(q)
+  )
+})
 
 const deleteRecording = async () => {
   if (confirm(`Are you sure you want to delete "${recording.value.title}"?`)) {
     try {
       await axios.delete(`/api/recordings/${recording.value.id}`)
-      toast.add({ severity: 'success', summary: 'Deleted', detail: 'Recording deleted successfully.', life: 3000 })
+      toast.add({ severity: 'success', summary: 'Deleted', detail: 'Recording removed successfully.', life: 3000 })
       router.push('/recordings')
     } catch (e) {
       console.error("Failed to delete recording", e)
-      toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to delete recording', life: 5000 })
+      toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to delete recording.', life: 5000 })
     }
   }
+}
+
+const copySummary = () => {
+  if (!recording.value?.summary_md) return
+  navigator.clipboard.writeText(recording.value.summary_md)
+  copiedSummary.value = true
+  toast.add({ severity: 'success', summary: 'Copied', detail: 'Summary copied to clipboard.', life: 2500 })
+  setTimeout(() => { copiedSummary.value = false }, 2500)
 }
 
 const startEditingSpeaker = (name) => {
@@ -204,7 +455,6 @@ const { pause, resume } = useIntervalFn(async () => {
     const res = await axios.get(`/api/recordings/${route.params.id}`)
     recording.value = res.data
     
-    // Stop polling when done or error
     if (!isProcessing.value) {
       pause()
       if (recording.value.summary_md) {
@@ -217,13 +467,8 @@ const { pause, resume } = useIntervalFn(async () => {
   }
 }, 3000, { immediate: false })
 
-const startPolling = () => {
-  resume()
-}
-
-const stopPolling = () => {
-  pause()
-}
+const startPolling = () => { resume() }
+const stopPolling = () => { pause() }
 
 const fetchData = async () => {
   try {
@@ -238,24 +483,15 @@ const fetchData = async () => {
     }
   } catch (e) {
     console.error("Failed to load recording", e)
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Recording not found', life: 5000 })
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Recording not found.', life: 5000 })
   }
 }
 
-onMounted(() => {
-  fetchData()
-})
-
-onUnmounted(() => {
-  stopPolling()
-})
+onMounted(() => { fetchData() })
+onUnmounted(() => { stopPolling() })
 
 watch(isProcessing, (newValue) => {
-  if (newValue) {
-    startPolling()
-  } else {
-    stopPolling()
-  }
+  if (newValue) { startPolling() } else { stopPolling() }
 })
 
 const parsedSummary = computed(() => {
@@ -267,7 +503,7 @@ const updateSegment = async (segment) => {
   const oldSpeakerName = editingSpeakerOrigName.value.trim()
   
   if (oldSpeakerName && oldSpeakerName !== newSpeakerName) {
-    const renameGlobally = confirm(`Do you want to rename "${oldSpeakerName}" to "${newSpeakerName}" for all segments in this recording? Click OK to rename globally, or Cancel to update only this segment.`)
+    const renameGlobally = confirm(`Rename all occurrences of "${oldSpeakerName}" to "${newSpeakerName}" across this recording?`)
     if (renameGlobally) {
       try {
         const promises = []
@@ -283,6 +519,7 @@ const updateSegment = async (segment) => {
           }
         }
         await Promise.all(promises)
+        toast.add({ severity: 'success', summary: 'Updated', detail: `Renamed speaker globally to "${newSpeakerName}".`, life: 3000 })
       } catch (e) {
         console.error("Failed to rename speaker globally", e)
       }
@@ -301,7 +538,27 @@ const updateSegment = async (segment) => {
 }
 
 const openSummaryModal = () => {
+  isMedicalSummary.value = !!recording.value?.is_medical
   showSummaryModal.value = true
+}
+
+const toggleMedicalFlag = async () => {
+  if (!recording.value) return
+  try {
+    const updated = !recording.value.is_medical
+    await axios.patch(`/api/recordings/${recording.value.id}`, { is_medical: updated })
+    recording.value.is_medical = updated
+    toast.add({
+      severity: 'success',
+      summary: updated ? 'Medical Flag Set' : 'Medical Flag Removed',
+      detail: updated 
+        ? 'Flagged as medical conversation. You can regenerate the summary to produce a Clinical SOAP Note.' 
+        : 'Medical conversation flag removed.',
+      life: 4000
+    })
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to update medical flag.', life: 4000 })
+  }
 }
 
 const submitRegenerateSummary = async () => {
@@ -309,9 +566,13 @@ const submitRegenerateSummary = async () => {
   showSummaryModal.value = false
   try {
     await axios.post(`/api/recordings/${recording.value.id}/summarize`, {
-      instruction: specialInstruction.value
+      instruction: specialInstruction.value,
+      is_medical: isMedicalSummary.value
     })
-    toast.add({ severity: 'info', summary: 'Summarization Started', detail: 'Checking progress automatically...', life: 5000 })
+    if (recording.value) {
+      recording.value.is_medical = isMedicalSummary.value
+    }
+    toast.add({ severity: 'info', summary: 'AI Synthesis Started', detail: 'Generating summary...', life: 5000 })
     fetchData()
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to start summarization.', life: 5000 })
@@ -320,6 +581,7 @@ const submitRegenerateSummary = async () => {
   }
 }
 
+
 const identifySpeakers = async () => {
   isIdentifyingSpeakers.value = true
   try {
@@ -327,63 +589,75 @@ const identifySpeakers = async () => {
     const mapping = res.data.mapping
     const count = Object.keys(mapping || {}).length
     if (count > 0) {
-      toast.add({ severity: 'success', summary: 'Success', detail: `Successfully identified and renamed ${count} speaker(s).`, life: 5000 })
+      toast.add({ severity: 'success', summary: 'Speakers Identified', detail: `Successfully identified ${count} speaker(s).`, life: 5000 })
     } else {
-      toast.add({ severity: 'info', summary: 'Info', detail: 'No new speaker names could be identified.', life: 5000 })
+      toast.add({ severity: 'info', summary: 'Info', detail: 'No new speaker names identified.', life: 5000 })
     }
     await fetchData()
   } catch (e) {
     console.error("Failed to identify speakers", e)
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to identify speakers.', life: 5000 })
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to detect speakers.', life: 5000 })
   } finally {
     isIdentifyingSpeakers.value = false
   }
 }
 
-
 const shareLink = () => {
   const url = `${window.location.origin}/share/${recording.value.id}`
   navigator.clipboard.writeText(url)
-  toast.add({ severity: 'success', summary: 'Copied', detail: 'Public link copied to clipboard!', life: 3000 })
+  toast.add({ severity: 'success', summary: 'Copied Link', detail: 'Public sharing link copied to clipboard!', life: 3000 })
 }
 
 const printSummary = () => {
   window.print()
 }
 
-// Helpers
-const formattedDate = computed(() => recording.value ? moment(recording.value.created_at).format('MMM DD, YYYY') : '')
+// Formatting Helpers
+const formattedDate = computed(() => recording.value ? moment(recording.value.created_at).format('MMM D, YYYY') : '')
 const formattedDuration = computed(() => {
-  if (!recording.value || !recording.value.duration) return '--:--'
+  if (!recording.value || !recording.value.duration) return '00:00'
   const mins = Math.floor(recording.value.duration / 60)
   const secs = Math.floor(recording.value.duration % 60)
   return `${mins}:${secs.toString().padStart(2, '0')}`
 })
+
 const formattedStatus = computed(() => recording.value ? recording.value.status.toUpperCase() : '')
+
 const statusClass = computed(() => {
   if (!recording.value) return ''
   const s = recording.value.status
-  if (['pending', 'transcribing', 'diarizing', 'summarizing'].includes(s)) {
-    return 'status-processing animate-pulse-slow'
-  }
-  if (s === 'error') {
-    return 'status-error'
-  }
-  return 'status-success'
+  if (['pending', 'transcribing', 'diarizing', 'summarizing'].includes(s)) return 'status-proc'
+  if (s === 'error') return 'status-err'
+  return 'status-ok'
 })
+
+const beaconClass = computed(() => {
+  if (isProcessing.value) return 'beacon-blue animate-pulse'
+  if (recording.value?.status === 'error') return 'beacon-red'
+  return 'beacon-green'
+})
+
 const formatTimestamp = (sec) => {
   const m = Math.floor(sec / 60)
   const s = Math.floor(sec % 60)
   return `${m}:${s.toString().padStart(2, '0')}`
 }
+
 const getSpeakerInitials = (name) => {
   return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
 }
+
 const getSpeakerColor = (name) => {
-  const colors = ['#4F46E5', '#0D9488', '#A855F7', '#EF4444', '#F59E0B']
+  const gradients = [
+    'linear-gradient(135deg, #0071E3, #30B0C7)',
+    'linear-gradient(135deg, #AF52DE, #5856D6)',
+    'linear-gradient(135deg, #34C759, #30B0C7)',
+    'linear-gradient(135deg, #FF9500, #FF3B30)',
+    'linear-gradient(135deg, #5856D6, #0071E3)'
+  ]
   let hash = 0
   for(let i=0; i<name.length; i++) hash += name.charCodeAt(i)
-  return colors[hash % colors.length]
+  return gradients[hash % gradients.length]
 }
 </script>
 
@@ -396,289 +670,844 @@ const getSpeakerColor = (name) => {
 }
 
 .recording-show-page {
-  max-width: 1000px;
+  max-width: 1080px;
   width: 100%;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 2.25rem 2rem;
   flex: 1;
 }
 
-.breadcrumb {
+/* Breadcrumb */
+.breadcrumb-bar {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.875rem;
-  margin-bottom: 1.5rem;
+  font-size: 0.85rem;
+  margin-bottom: 1.25rem;
 }
 
-.breadcrumb a { color: var(--text-muted); }
-.breadcrumb .separator { color: var(--neutral-200); }
-.breadcrumb .current { font-weight: 600; color: var(--text-primary); }
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--apple-blue);
+  font-weight: 500;
+  text-decoration: none;
+  transition: var(--transition-fast);
+}
 
+.back-link:hover {
+  color: var(--apple-blue-hover);
+  transform: translateX(-2px);
+}
+
+.separator {
+  color: rgba(0, 0, 0, 0.2);
+}
+
+.current-title {
+  color: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 400px;
+}
+
+/* Title Row */
 .title-row {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 2rem;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 0.75rem;
-}
-
-.btn-delete {
-  color: #EF4444;
-  border-color: var(--neutral-200);
-}
-
-.btn-delete:hover {
-  background-color: #FEE2E2;
-  border-color: #EF4444;
-  color: #EF4444;
+  gap: 1.5rem;
+  flex-wrap: wrap;
 }
 
 .page-title {
   font-size: 2.25rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
   margin-bottom: 0.75rem;
-  color: var(--primary);
+  line-height: 1.2;
 }
 
-.meta-info {
+.meta-pill-group {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
+  gap: 0.65rem;
+  flex-wrap: wrap;
 }
 
-.meta-item {
+.meta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--bg-secondary);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.medical-toggle-pill {
+  cursor: pointer;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.medical-toggle-pill:hover {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #047857;
+}
+
+.medical-toggle-pill.is-active {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #047857;
+  font-weight: 600;
+}
+
+.medical-icon-badge {
+  background: rgba(16, 185, 129, 0.12) !important;
+}
+
+.modal-medical-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: rgba(0, 0, 0, 0.02);
+  border: 1.5px solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-md);
+  margin-bottom: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.modal-medical-toggle:hover {
+  background: rgba(16, 185, 129, 0.04);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.modal-medical-toggle.is-active {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.45);
+}
+
+.modal-medical-toggle-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.modal-medical-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #059669;
+}
+
+.modal-medical-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.modal-medical-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.modal-medical-sub {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.apple-toggle-switch-sm {
+  width: 38px;
+  height: 22px;
+  background: #E5E7EB;
+  border-radius: 11px;
+  padding: 2px;
+  cursor: pointer;
+  transition: background-color 0.25s ease;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.apple-toggle-switch-sm.checked {
+  background: #10B981;
+}
+
+.switch-handle-sm {
+  display: block;
+  width: 18px;
+  height: 18px;
+  background: #FFFFFF;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.25s ease;
+}
+
+.apple-toggle-switch-sm.checked .switch-handle-sm {
+  transform: translateX(16px);
+}
+
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--radius-full);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.beacon-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+}
+
+.beacon-blue { background-color: var(--apple-blue); }
+.beacon-green { background-color: var(--apple-green); }
+.beacon-red { background-color: var(--apple-red); }
+
+.status-ok { background: var(--apple-green-light); color: #1E8E3E; }
+.status-proc { background: var(--apple-blue-light); color: var(--apple-blue); }
+.status-err { background: var(--apple-red-light); color: var(--apple-red); }
+
+.font-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Action Buttons Group */
+.action-buttons-group {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.apple-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: var(--bg-secondary);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 0.55rem 0.95rem;
+  border-radius: var(--radius-full);
+  font-size: 0.825rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s var(--apple-ease);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.apple-btn-secondary:hover {
+  background: rgba(0, 0, 0, 0.04);
+  transform: translateY(-1px);
+}
+
+.apple-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: var(--bg-secondary);
+  border: 1px solid rgba(255, 59, 48, 0.15);
+  padding: 0.55rem 0.95rem;
+  border-radius: var(--radius-full);
+  font-size: 0.825rem;
+  font-weight: 600;
+  color: var(--apple-red);
+  cursor: pointer;
+  transition: all 0.2s var(--apple-ease);
+}
+
+.apple-btn-danger:hover {
+  background: var(--apple-red-light);
+  border-color: var(--apple-red);
+}
+
+.apple-primary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--apple-blue);
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 0.6rem 1.2rem;
+  border-radius: var(--radius-full);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s var(--apple-ease);
+}
+
+.apple-primary-btn:hover {
+  background: var(--apple-blue-hover);
+  transform: translateY(-1px);
+}
+
+/* Tabs Toolbar */
+.tabs-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.segmented-control-macos {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(118, 118, 128, 0.12);
+  border-radius: var(--radius-md);
+  padding: 3px;
+  gap: 3px;
+}
+
+.segment-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 1rem;
+  border-radius: 9px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.segment-item:hover {
+  color: var(--text-primary);
+}
+
+.segment-item.active {
+  background: var(--white);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08), 0 1px 1px rgba(0, 0, 0, 0.04);
+}
+
+.segment-item.active .tab-icon {
+  color: var(--apple-blue);
+}
+
+.counter-badge {
+  font-size: 0.7rem;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--radius-full);
+  margin-left: 0.2rem;
+}
+
+.tab-context-actions {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  color: var(--text-secondary);
-  font-size: 0.875rem;
 }
 
-.status-badge {
-  padding: 0.25rem 0.75rem;
-  border-radius: var(--radius-full);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
+.apple-tool-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
+  gap: 0.45rem;
+  background: var(--bg-secondary);
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  padding: 0.45rem 0.85rem;
+  border-radius: var(--radius-full);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition-fast);
 }
 
-.status-processing {
-  background-color: #E0E7FF;
-  color: #4F46E5;
+.apple-tool-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-primary);
+  border-color: rgba(0, 0, 0, 0.12);
 }
 
-.status-success {
-  background-color: #CCFBF1;
-  color: #0D9488;
+.apple-tool-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
-.status-error {
-  background-color: #FEE2E2;
-  color: #EF4444;
-}
-
-
-
-.tabs-container {
+.transcript-search-box {
+  position: relative;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid var(--neutral-200);
-  margin-bottom: 2rem;
-  padding-bottom: 0.5rem;
+  background: rgba(118, 118, 128, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: var(--radius-full);
+  padding: 0.35rem 0.75rem;
+  height: 32px;
 }
 
-.tabs-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.search-ico {
+  color: var(--text-muted);
+  margin-right: 0.35rem;
 }
 
-.tabs {
-  display: flex;
-  gap: 1.5rem;
+.transcript-search-input {
+  border: none;
+  background: transparent;
+  font-size: 0.8rem;
+  font-family: inherit;
+  color: var(--text-primary);
+  outline: none;
+  width: 150px;
 }
 
-.tab-btn {
+.clear-mini-btn {
   background: transparent;
   border: none;
-  font-size: 1rem;
-  font-weight: 600;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 0.5rem 1rem;
-  position: relative;
-  transition: var(--transition);
+  font-size: 0.75rem;
 }
 
-.tab-btn.active { color: var(--primary); }
-.tab-btn.active::after {
-  content: ''; position: absolute; left: 0; right: 0; bottom: -0.6rem;
-  height: 3px; background: var(--primary); border-radius: 3px 3px 0 0;
+/* Apple Document Card (Summary) */
+.apple-doc-card {
+  background: var(--white);
+  border-radius: var(--radius-xl);
+  padding: 3rem 3.5rem;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 
-.tab-actions { display: flex; gap: 1rem; }
-.btn-sm { padding: 0.5rem 1rem; font-size: 0.875rem; }
+.doc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 1.5rem;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
 
-/* Transcript View */
-.segment-block {
+.doc-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.doc-icon-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--apple-blue-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.doc-heading {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.doc-subheading {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.doc-meta-stats {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.meta-stat-divider {
+  color: rgba(0, 0, 0, 0.15);
+}
+
+/* Generating Animation Card */
+.generating-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 5rem 2rem;
+  text-align: center;
+}
+
+.ambient-sparkle-halo {
+  width: 90px;
+  height: 90px;
+  border-radius: var(--radius-full);
+  background: var(--apple-blue-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+}
+
+.generating-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.generating-subtitle {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  max-width: 460px;
+}
+
+.empty-summary-card, .empty-transcript-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 5rem 2rem;
+  text-align: center;
+}
+
+.empty-sparkle-circle {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+/* Markdown Styling */
+.markdown-content {
+  font-size: 1.025rem;
+  line-height: 1.7;
+  color: var(--text-primary);
+}
+
+.markdown-content :deep(h1) {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin-top: 2rem;
+  margin-bottom: 0.85rem;
+  color: var(--text-primary);
+  letter-spacing: -0.025em;
+}
+
+.markdown-content :deep(h2) {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-top: 1.75rem;
+  margin-bottom: 0.65rem;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.markdown-content :deep(h3) {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+}
+
+.markdown-content :deep(p) {
+  margin-bottom: 1.2rem;
+  color: #333336;
+}
+
+.markdown-content :deep(ul), .markdown-content :deep(ol) {
+  margin-bottom: 1.25rem;
+  padding-left: 1.5rem;
+}
+
+.markdown-content :deep(li) {
+  margin-bottom: 0.5rem;
+  color: #333336;
+}
+
+.markdown-content :deep(strong) {
+  color: #000000;
+  font-weight: 600;
+}
+
+.markdown-content :deep(blockquote) {
+  border-left: 3.5px solid var(--apple-blue);
+  background: var(--neutral-50);
+  padding: 0.85rem 1.25rem;
+  margin: 1.5rem 0;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* Transcript View & Dialogue Timeline */
+.segments-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.segment-card {
   background: var(--white);
   border-radius: var(--radius-lg);
-  padding: 1.5rem;
-  margin-bottom: 1rem;
-  border: 1px solid transparent;
-  transition: var(--transition);
+  padding: 1.25rem 1.5rem;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  transition: all 0.2s var(--apple-ease);
 }
 
-.segment-block:hover { border-color: var(--neutral-200); box-shadow: var(--shadow-sm); }
+.segment-card:hover {
+  border-color: rgba(0, 113, 227, 0.25);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.04);
+}
 
 .segment-header {
-  display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.85rem;
 }
 
-.speaker-info { display: flex; align-items: center; gap: 0.75rem; }
+.speaker-profile {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
 
 .speaker-avatar {
-  width: 32px; height: 32px; border-radius: 50%;
-  color: white; font-size: 0.75rem; font-weight: 700;
-  display: flex; align-items: center; justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
 }
 
-.speaker-name-wrapper {
-  position: relative;
+.speaker-name-container {
   display: flex;
   align-items: center;
   gap: 0.25rem;
 }
 
 .speaker-name-input {
-  border: 1px solid transparent; 
-  background: transparent; 
+  border: 1px solid transparent;
+  background: transparent;
   font-weight: 600;
-  font-size: 1rem; 
-  color: var(--text-primary); 
-  font-family: var(--font-headline);
-  border-radius: var(--radius-md);
-  padding: 0.2rem 0.5rem;
-  transition: var(--transition);
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  font-family: inherit;
+  border-radius: var(--radius-sm);
+  padding: 0.15rem 0.45rem;
+  transition: var(--transition-fast);
   cursor: pointer;
 }
 
 .speaker-name-input:hover {
-  background: var(--neutral-50);
-  border-color: var(--neutral-200);
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
 }
 
-.speaker-name-input:focus { 
-  outline: none; 
-  border-color: var(--primary);
+.speaker-name-input:focus {
+  outline: none;
   background: var(--white);
+  border-color: var(--apple-blue);
+  box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.2);
   cursor: text;
 }
 
-.edit-icon {
+.pencil-icon {
   color: var(--text-muted);
   opacity: 0;
-  transition: var(--transition);
-  pointer-events: none;
+  transition: opacity 0.2s ease;
 }
 
-.speaker-name-wrapper:hover .edit-icon,
-.speaker-name-input:focus ~ .edit-icon {
-  opacity: 1;
+.speaker-name-container:hover .pencil-icon {
+  opacity: 0.7;
 }
 
-.timestamp { font-size: 0.75rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-
-.text-edit-input {
-  width: 100%; border: none; background: transparent; resize: none;
-  font-family: var(--font-body); font-size: 1rem; color: var(--text-secondary); line-height: 1.6;
-}
-.text-edit-input:focus { outline: none; }
-
-/* Summary View */
-.summary-card {
-  padding: 2.5rem;
-  border-radius: var(--radius-xl);
+.segment-timestamp {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 500;
 }
 
-.markdown-content :deep(h1) { font-size: 1.5rem; margin-bottom: 1rem; margin-top: 1.5rem; }
-.markdown-content :deep(h2) { font-size: 1.25rem; margin-bottom: 0.75rem; margin-top: 1.5rem; }
-.markdown-content :deep(h3) { font-size: 1.1rem; margin-bottom: 0.5rem; margin-top: 1.5rem; }
-.markdown-content :deep(p) { margin-bottom: 1rem; color: var(--text-secondary); }
-.markdown-content :deep(ul), .markdown-content :deep(ol) { margin-bottom: 1rem; padding-left: 1.5rem; }
-.markdown-content :deep(li) { margin-bottom: 0.5rem; color: var(--text-secondary); }
-.markdown-content :deep(strong) { color: var(--text-primary); font-weight: 600; }
-.markdown-content :deep(blockquote) { 
-  border-left: 4px solid var(--primary); padding-left: 1rem; margin-left: 0; color: var(--text-muted); font-style: italic;
+.segment-textarea {
+  width: 100%;
+  border: none;
+  background: transparent;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 0.95rem;
+  color: #2c2c2e;
+  line-height: 1.6;
+  outline: none;
+  padding: 0.25rem;
+  border-radius: var(--radius-xs);
+  transition: var(--transition-fast);
 }
 
-/* Utils */
-.text-tertiary { color: var(--tertiary); }
+.segment-textarea:focus {
+  background: rgba(0, 113, 227, 0.02);
+  box-shadow: 0 0 0 1px rgba(0, 113, 227, 0.3);
+}
 
-.sparkle-loader {
-  position: relative;
-  width: 80px;
-  height: 80px;
+/* Modal Dialog */
+.modal-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.dialog-desc {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+
+.quick-prompt-chips {
   display: flex;
   align-items: center;
-  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.5rem;
 }
 
-.absolute-center {
-  position: absolute;
+.chips-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-right: 0.2rem;
 }
+
+.chip-btn {
+  background: rgba(0, 113, 227, 0.07);
+  color: var(--apple-blue);
+  border: 1px solid rgba(0, 113, 227, 0.15);
+  padding: 0.3rem 0.65rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.chip-btn:hover {
+  background: rgba(0, 113, 227, 0.15);
+  transform: translateY(-1px);
+}
+
+.field-label {
+  font-size: 0.825rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.4rem;
+  display: block;
+}
+
+.apple-textarea {
+  width: 100%;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  outline: none;
+  transition: var(--transition-fast);
+  resize: vertical;
+}
+
+.apple-textarea:focus {
+  border-color: var(--apple-blue);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15);
+}
+
+.dialog-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+/* Full Page Loader */
+.full-page-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 80vh;
+  gap: 1rem;
+}
+
+.loader-label {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.text-green { color: var(--apple-green); }
 
 @media (max-width: 768px) {
+  .recording-show-page {
+    padding: 1.5rem 1rem;
+  }
+  
   .page-title {
     font-size: 1.75rem;
   }
-  
-  .title-row {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 1.25rem;
+
+  .apple-doc-card {
+    padding: 1.75rem 1.25rem;
   }
-  
-  .meta-info {
-    flex-wrap: wrap;
-    gap: 0.75rem 1rem;
-  }
-  
-  .tabs-header {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 1rem;
-  }
-  
-  .tab-actions {
-    justify-content: flex-end;
-  }
-  
-  .segment-block {
-    padding: 1rem;
-  }
-  
-  .segment-header {
+
+  .doc-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.5rem;
+    gap: 0.75rem;
   }
-  
-  .timestamp {
-    align-self: flex-end;
+
+  .tabs-toolbar {
+    flex-direction: column;
+    align-items: stretch;
   }
-  
-  .summary-card {
-    padding: 1.5rem;
+
+  .tab-context-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .transcript-search-box {
+    width: 100%;
+  }
+
+  .transcript-search-input {
+    width: 100%;
   }
 }
 </style>
