@@ -11,21 +11,6 @@
         Record audio live with your microphone or import an existing audio/video file.
       </p>
 
-      <!-- Offline-first status banner -->
-      <div class="apple-offline-banner" :class="{ 'offline-mode': !isOnline }">
-        <div class="offline-banner-left">
-          <Wifi size="16" class="text-emerald" v-if="isOnline" />
-          <WifiOff size="16" class="text-amber" v-else />
-          <div class="offline-banner-text">
-            <strong>{{ isOnline ? 'Offline-First Ready:' : 'Offline Mode Active:' }}</strong>
-            <span>{{ isOnline ? ' Recordings are stored safely on-device before streaming to backend.' : ' Internet unavailable. Recording will be saved to device and automatically uploaded once connection is restored.' }}</span>
-          </div>
-        </div>
-        <span class="offline-banner-pill" :class="{ 'native-pill': isNative }">
-          {{ isNative ? 'iOS Background Recording' : 'Offline Storage' }}
-        </span>
-      </div>
-
       <!-- Warning Banner if API key not set -->
       <div v-if="!isKeySet && isOnline" class="apple-warning-banner">
         <AlertTriangle size="18" class="warning-icon" />

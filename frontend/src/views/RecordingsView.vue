@@ -166,12 +166,44 @@
           </button>
         </div>
 
-        <div v-else class="grid grid-cols-3 gap-4">
-          <OfflineRecordingCard 
-            v-for="rec in offlineStore.offlineList" 
-            :key="rec.id" 
-            :recording="rec" 
-          />
+        <div v-else>
+          <div class="offline-queue-header-bar">
+            <div class="offline-queue-header-info">
+              <h3 class="offline-header-title">Recordings Stored on This Device</h3>
+              <p class="offline-header-sub">
+                {{ offlineStore.offlineList.length }} local file{{ offlineStore.offlineList.length === 1 ? '' : 's' }} cached in device storage
+                <span v-if="offlineStore.pendingCount > 0" class="offline-header-pending">
+                  • {{ offlineStore.pendingCount }} waiting to upload
+                </span>
+              </p>
+            </div>
+            <div class="offline-queue-header-actions">
+              <button 
+                class="apple-btn-secondary danger-action-btn" 
+                @click="showClearAllOfflineDialog = true"
+                title="Delete all local recordings from this device"
+              >
+                <Trash2 size="14" />
+                <span>Delete All Local</span>
+              </button>
+              <button 
+                class="apple-primary-btn" 
+                :disabled="!offlineStore.isOnline || offlineStore.isSyncing || offlineStore.pendingCount === 0"
+                @click="offlineStore.syncAll()"
+              >
+                <RefreshCw size="14" :class="{ 'animate-spin': offlineStore.isSyncing }" />
+                <span>{{ offlineStore.isSyncing ? 'Syncing...' : 'Sync All Pending' }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-4">
+            <OfflineRecordingCard 
+              v-for="rec in offlineStore.offlineList" 
+              :key="rec.id" 
+              :recording="rec" 
+            />
+          </div>
         </div>
       </div>
 
@@ -252,6 +284,45 @@
     <!-- Speechmatics Usage Footer Dock -->
     <SpeechmaticsUsage v-if="!loading && recordings.length > 0" type="footer" />
 
+    <!-- Clear All Offline Recordings Dialog -->
+    <Dialog 
+      v-model:visible="showClearAllOfflineDialog" 
+      modal 
+      header="Delete All Local Recordings"
+      :style="{ width: '90vw', maxWidth: '420px' }"
+    >
+      <div class="delete-dialog-body">
+        <div class="delete-dialog-icon">
+          <Trash2 size="24" class="text-red-500" />
+        </div>
+        <p class="delete-dialog-text">
+          Are you sure you want to delete all <strong>{{ offlineStore.offlineList.length }}</strong> local recordings from this iPhone? 
+          Any unsynced audio files will be permanently lost and cannot be recovered.
+        </p>
+      </div>
+      <template #footer>
+        <div class="delete-dialog-actions">
+          <button 
+            type="button" 
+            class="apple-dialog-cancel-btn" 
+            @click="showClearAllOfflineDialog = false"
+            :disabled="isClearingOffline"
+          >
+            Cancel
+          </button>
+          <button 
+            type="button" 
+            class="apple-dialog-delete-btn" 
+            @click="handleClearAllOffline"
+            :disabled="isClearingOffline"
+          >
+            <Loader2 class="animate-spin" size="14" v-if="isClearingOffline" />
+            <span v-else>Delete All</span>
+          </button>
+        </div>
+      </template>
+    </Dialog>
+
     <!-- Teleport Modal out of view -->
     <Teleport to="body">
       <NewRecordingModal v-if="isRecordingModalOpen" @close="isRecordingModalOpen = false" @refresh="fetchRecordings" />
@@ -262,9 +333,11 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useToast } from 'primevue/usetoast'
+import Dialog from 'primevue/dialog'
 import axios from 'axios'
 import moment from 'moment'
-import { Loader2, Mic, Plus, LayoutGrid, List, ChevronRight, Stethoscope, HardDrive, RefreshCw } from '@lucide/vue'
+import { Loader2, Mic, Plus, LayoutGrid, List, ChevronRight, Stethoscope, HardDrive, RefreshCw, Trash2 } from '@lucide/vue'
 import RecordingCard from '../components/RecordingCard.vue'
 import OfflineRecordingCard from '../components/OfflineRecordingCard.vue'
 import NewRecordingModal from '../components/NewRecordingModal.vue'
@@ -273,6 +346,7 @@ import { useOfflineRecordingsStore } from '../stores/offlineRecordings'
 
 const route = useRoute()
 const router = useRouter()
+const toast = useToast()
 const offlineStore = useOfflineRecordingsStore()
 const recordings = ref([])
 const loading = ref(true)
@@ -280,6 +354,32 @@ const isRecordingModalOpen = ref(false)
 const currentFilter = ref('all')
 const sortBy = ref('newest')
 const viewMode = ref('grid')
+const showClearAllOfflineDialog = ref(false)
+const isClearingOffline = ref(false)
+
+const handleClearAllOffline = async () => {
+  isClearingOffline.value = true
+  try {
+    await offlineStore.clearAllRecordings()
+    showClearAllOfflineDialog.value = false
+    toast.add({
+      severity: 'success',
+      summary: 'Deleted',
+      detail: 'All local recordings removed from device storage.',
+      life: 3000
+    })
+  } catch (err) {
+    console.error('Failed to clear offline recordings:', err)
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to delete local recordings.',
+      life: 4000
+    })
+  } finally {
+    isClearingOffline.value = false
+  }
+}
 
 const fetchRecordings = async () => {
   loading.value = true
@@ -901,5 +1001,149 @@ const getSnippet = (recording) => {
 
 .offline-queue-view {
   margin-top: 1rem;
+}
+
+.offline-queue-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.offline-queue-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.offline-header-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.offline-header-sub {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.offline-header-pending {
+  color: var(--apple-blue);
+  font-weight: 600;
+}
+
+.offline-queue-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.danger-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  border-radius: var(--radius-full);
+  background: rgba(255, 59, 48, 0.08);
+  border: 1px solid rgba(255, 59, 48, 0.2);
+  color: var(--apple-red);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: var(--transition);
+}
+
+.danger-action-btn:hover {
+  background: rgba(255, 59, 48, 0.15);
+  color: #b71c1c;
+}
+
+/* Apple Dialog Styling */
+.delete-dialog-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.5rem 0 1rem 0;
+}
+
+.delete-dialog-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 59, 48, 0.1);
+  color: var(--apple-red);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.delete-dialog-text {
+  font-size: 0.92rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.delete-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.apple-dialog-cancel-btn {
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--radius-full);
+  background: var(--neutral-100);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: var(--transition);
+}
+
+.apple-dialog-cancel-btn:hover {
+  background: var(--neutral-200);
+}
+
+.apple-dialog-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1.25rem;
+  border-radius: var(--radius-full);
+  background: var(--apple-red);
+  color: #ffffff;
+  border: none;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  touch-action: manipulation;
+  box-shadow: 0 2px 8px rgba(255, 59, 48, 0.3);
+  transition: var(--transition);
+}
+
+.apple-dialog-delete-btn:hover:not(:disabled) {
+  background: #e02d24;
+  transform: translateY(-1px);
+}
+
+.apple-dialog-delete-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>

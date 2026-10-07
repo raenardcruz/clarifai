@@ -55,9 +55,16 @@
   --neutral-50: #FBFBFD;
   --white: #FFFFFF;
 
+  /* Safe Area Insets for iOS & notched devices */
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+
   /* Layout dimensions */
   --sidebar-width: 270px;
-  --header-height: 64px;
+  --header-base-height: 64px;
+  --header-height: calc(var(--header-base-height) + var(--safe-area-top));
 
   /* Apple Typography Stack */
   --font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "SF Pro", "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
@@ -389,16 +396,16 @@ a:hover {
   .grid-cols-4, .grid-cols-3, .grid-cols-2 { grid-template-columns: 1fr; }
 }
 
-/* Auth Layout (Apple ID / macOS Screen) */
 .auth-layout {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #000000;
   position: relative;
   overflow: hidden;
-  padding: 1.5rem;
+  padding: calc(1.5rem + var(--safe-area-top)) calc(1.5rem + var(--safe-area-right)) calc(1.5rem + var(--safe-area-bottom)) calc(1.5rem + var(--safe-area-left));
 }
 
 /* Apple Ambient Glow Orbs */

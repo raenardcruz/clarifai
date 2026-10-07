@@ -28,6 +28,18 @@
 
     <!-- Right Utility Controls -->
     <div class="right-section">
+      <!-- iOS App Reload Button (Only visible on installed iOS app) -->
+      <button 
+        v-if="isIosApp"
+        class="ios-refresh-btn"
+        :class="{ 'is-refreshing': isRefreshing }"
+        @click="handlePageRefresh"
+        title="Reload Page"
+        aria-label="Reload Page"
+      >
+        <RotateCw size="15" :class="{ 'animate-spin': isRefreshing }" />
+      </button>
+
       <!-- Network & Offline Sync Pill -->
       <button 
         class="network-sync-pill"
@@ -63,12 +75,27 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Search, Menu, X, Wifi, WifiOff, CloudUpload, RefreshCw } from '@lucide/vue'
+import { Capacitor } from '@capacitor/core'
+import { Search, Menu, X, Wifi, WifiOff, CloudUpload, RefreshCw, RotateCw } from '@lucide/vue'
 import { useAuthStore } from '../stores/auth'
 import { useOfflineRecordingsStore } from '../stores/offlineRecordings'
 import { toggleSidebar } from '../stores/layout'
+
+const isIosApp = computed(() => {
+  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios'
+})
+
+const isRefreshing = ref(false)
+
+const handlePageRefresh = () => {
+  if (isRefreshing.value) return
+  isRefreshing.value = true
+  setTimeout(() => {
+    window.location.reload()
+  }, 100)
+}
 
 const authStore = useAuthStore()
 const offlineStore = useOfflineRecordingsStore()
@@ -127,17 +154,22 @@ onUnmounted(() => {
 <style scoped>
 .topbar {
   height: var(--header-height);
+  min-height: var(--header-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 2rem;
-  background-color: rgba(245, 245, 247, 0.8);
+  padding-top: var(--safe-area-top, env(safe-area-inset-top, 0px));
+  padding-bottom: 0;
+  padding-left: calc(2rem + var(--safe-area-left, env(safe-area-inset-left, 0px)));
+  padding-right: calc(2rem + var(--safe-area-right, env(safe-area-inset-right, 0px)));
+  background-color: rgba(245, 245, 247, 0.85);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   position: sticky;
   top: 0;
   z-index: 30;
+  box-sizing: border-box;
 }
 
 .left-section {
@@ -157,6 +189,8 @@ onUnmounted(() => {
   padding: 0.5rem;
   border-radius: var(--radius-sm);
   transition: var(--transition);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 .hamburger-btn:hover {
@@ -241,7 +275,39 @@ onUnmounted(() => {
 .right-section {
   display: flex;
   align-items: center;
-  gap: 1.25rem;
+  gap: 0.85rem;
+  flex-shrink: 0;
+}
+
+.ios-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: var(--text-primary);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: all 0.2s var(--apple-ease);
+}
+
+.ios-refresh-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--apple-blue);
+  transform: translateY(-1px);
+}
+
+.ios-refresh-btn:active,
+.ios-refresh-btn.is-refreshing {
+  background: rgba(0, 113, 227, 0.12);
+  color: var(--apple-blue);
+  transform: scale(0.95);
 }
 
 .user-profile {
@@ -305,17 +371,25 @@ onUnmounted(() => {
 
 @media (max-width: 768px) {
   .topbar {
-    padding: 0 1rem;
+    padding-left: calc(1rem + var(--safe-area-left, env(safe-area-inset-left, 0px)));
+    padding-right: calc(1rem + var(--safe-area-right, env(safe-area-inset-right, 0px)));
   }
   
   .hamburger-btn {
     display: flex;
     align-items: center;
     justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0.5rem;
   }
   
   .spotlight-search-container {
-    height: 34px;
+    height: 38px;
+  }
+
+  .search-input {
+    font-size: 16px;
   }
 }
 

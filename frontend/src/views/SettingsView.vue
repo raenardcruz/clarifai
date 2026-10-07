@@ -192,7 +192,17 @@
                 <span class="setting-name">Offline Device Cache</span>
                 <span class="setting-hint">{{ offlineStore.offlineList.length }} local recording(s) on device • {{ offlineStore.pendingCount }} waiting for internet upload</span>
               </div>
-              <div class="setting-control">
+              <div class="setting-control flex items-center gap-2 flex-wrap">
+                <button 
+                  type="button" 
+                  class="apple-btn-secondary danger-action-btn"
+                  :disabled="offlineStore.offlineList.length === 0"
+                  @click="showClearCacheDialog = true"
+                  title="Delete all local recordings from this device"
+                >
+                  <Trash2 size="14" />
+                  <span>Clear Cache</span>
+                </button>
                 <button 
                   type="button" 
                   class="apple-primary-btn" 
@@ -221,6 +231,44 @@
         </div>
       </form>
     </div>
+
+    <!-- Clear Cache Confirmation Dialog -->
+    <Dialog 
+      v-model:visible="showClearCacheDialog" 
+      modal 
+      header="Clear Device Local Cache"
+      :style="{ width: '90vw', maxWidth: '420px' }"
+    >
+      <div class="delete-dialog-body">
+        <div class="delete-dialog-icon">
+          <Trash2 size="24" class="text-red-500" />
+        </div>
+        <p class="delete-dialog-text">
+          Are you sure you want to clear all <strong>{{ offlineStore.offlineList.length }}</strong> offline recording(s) stored on this iPhone? Unsynced audio will be permanently removed.
+        </p>
+      </div>
+      <template #footer>
+        <div class="delete-dialog-actions">
+          <button 
+            type="button" 
+            class="apple-dialog-cancel-btn" 
+            @click="showClearCacheDialog = false"
+            :disabled="isClearingCache"
+          >
+            Cancel
+          </button>
+          <button 
+            type="button" 
+            class="apple-dialog-delete-btn" 
+            @click="handleClearCache"
+            :disabled="isClearingCache"
+          >
+            <Loader2 class="animate-spin" size="14" v-if="isClearingCache" />
+            <span v-else>Clear Cache</span>
+          </button>
+        </div>
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -228,7 +276,8 @@
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { useToast } from 'primevue/usetoast'
-import { Sparkles, Key, Save, Loader2, Eye, EyeOff, Smartphone, RefreshCw } from '@lucide/vue'
+import Dialog from 'primevue/dialog'
+import { Sparkles, Key, Save, Loader2, Eye, EyeOff, Smartphone, RefreshCw, Trash2 } from '@lucide/vue'
 import Select from 'primevue/select'
 import { getApiBaseUrl, setApiBaseUrl, checkBackendHealth } from '../services/apiConfig'
 import { useOfflineRecordingsStore } from '../stores/offlineRecordings'
@@ -237,6 +286,32 @@ const toast = useToast()
 const offlineStore = useOfflineRecordingsStore()
 const serverUrl = ref('')
 const isTestingServer = ref(false)
+const showClearCacheDialog = ref(false)
+const isClearingCache = ref(false)
+
+const handleClearCache = async () => {
+  isClearingCache.value = true
+  try {
+    await offlineStore.clearAllRecordings()
+    showClearCacheDialog.value = false
+    toast.add({
+      severity: 'success',
+      summary: 'Cache Cleared',
+      detail: 'All local recordings removed from device storage.',
+      life: 3000
+    })
+  } catch (err) {
+    console.error('Failed to clear offline cache:', err)
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: 'Failed to clear local cache.',
+      life: 4000
+    })
+  } finally {
+    isClearingCache.value = false
+  }
+}
 
 const settings = ref({
   ai_summarization_mode: 'auto',
@@ -615,5 +690,110 @@ onMounted(() => {
     grid-template-columns: 1fr;
     max-width: 100%;
   }
+}
+
+.danger-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  border-radius: var(--radius-full);
+  background: rgba(255, 59, 48, 0.08);
+  border: 1px solid rgba(255, 59, 48, 0.2);
+  color: var(--apple-red);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: var(--transition);
+}
+
+.danger-action-btn:hover:not(:disabled) {
+  background: rgba(255, 59, 48, 0.15);
+  color: #b71c1c;
+}
+
+.danger-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Apple Dialog Styling */
+.delete-dialog-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.5rem 0 1rem 0;
+}
+
+.delete-dialog-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 59, 48, 0.1);
+  color: var(--apple-red);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.delete-dialog-text {
+  font-size: 0.92rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.delete-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.apple-dialog-cancel-btn {
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--radius-full);
+  background: var(--neutral-100);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: var(--transition);
+}
+
+.apple-dialog-cancel-btn:hover {
+  background: var(--neutral-200);
+}
+
+.apple-dialog-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1.25rem;
+  border-radius: var(--radius-full);
+  background: var(--apple-red);
+  color: #ffffff;
+  border: none;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  touch-action: manipulation;
+  box-shadow: 0 2px 8px rgba(255, 59, 48, 0.3);
+  transition: var(--transition);
+}
+
+.apple-dialog-delete-btn:hover:not(:disabled) {
+  background: #e02d24;
+  transform: translateY(-1px);
+}
+
+.apple-dialog-delete-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>

@@ -53,7 +53,7 @@
               <span>Share</span>
             </button>
             
-            <a :href="`/api/recordings/${recording.id}/download/${activeTab}`" class="no-underline">
+            <a v-if="!isIosApp" :href="`/api/recordings/${recording.id}/download/${activeTab}`" class="no-underline">
               <button class="apple-btn-secondary" title="Export file">
                 <Download size="15" />
                 <span>Export</span>
@@ -117,7 +117,7 @@
             <button 
               class="apple-tool-btn no-print" 
               @click="printSummary" 
-              v-if="recording.summary_md"
+              v-if="recording.summary_md && !isIosApp"
             >
               <Printer size="14" />
               <span>Print / PDF</span>
@@ -380,6 +380,11 @@ import SpeechmaticsUsage from '../components/SpeechmaticsUsage.vue'
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+
+const isIosApp = computed(() => {
+  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios'
+})
+
 const recording = ref(null)
 const loadError = ref(null)
 const activeTab = ref('summary')

@@ -5,6 +5,7 @@ import {
   saveOfflineRecording,
   updateOfflineRecording,
   deleteOfflineRecording,
+  clearAllOfflineRecordings,
   getAudioBlob
 } from '../services/db'
 import {
@@ -109,6 +110,18 @@ export const useOfflineRecordingsStore = defineStore('offlineRecordings', () => 
     await refresh()
   }
 
+  const clearAllRecordings = async () => {
+    for (const rec of offlineList.value) {
+      try {
+        await audioRecorder.deleteLocalFile(rec)
+      } catch (e) {
+        console.warn('Error deleting local file:', e)
+      }
+    }
+    await clearAllOfflineRecordings()
+    await refresh()
+  }
+
   const getAudioUrl = async (id) => {
     const target = offlineList.value.find(r => r.id === id)
     if (!target) return null
@@ -138,6 +151,7 @@ export const useOfflineRecordingsStore = defineStore('offlineRecordings', () => 
     syncRecording,
     syncAll,
     removeRecording,
+    clearAllRecordings,
     getAudioUrl
   }
 })

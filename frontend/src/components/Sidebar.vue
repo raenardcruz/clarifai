@@ -73,6 +73,15 @@
           <span class="user-card-name">{{ authStore.user?.email || 'User' }}</span>
           <span class="user-card-role">{{ authStore.user?.role === 'admin' ? 'Administrator' : 'Standard Member' }}</span>
         </div>
+        <button 
+          v-if="isIosApp"
+          class="ios-reload-icon-btn" 
+          @click="handleReload" 
+          title="Reload app"
+          aria-label="Reload app"
+        >
+          <RotateCw size="15" :class="{ 'animate-spin': isReloading }" />
+        </button>
         <button class="logout-icon-btn" @click="authStore.logout()" title="Log out">
           <LogOut size="16" />
         </button>
@@ -87,11 +96,26 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { Capacitor } from '@capacitor/core'
 import { useAuthStore } from '../stores/auth'
 import { isSidebarOpen } from '../stores/layout'
-import { LayoutDashboard, Mic, Settings, Users, Plus, Sparkles, LogOut } from '@lucide/vue'
+import { LayoutDashboard, Mic, Settings, Users, Plus, Sparkles, LogOut, RotateCw } from '@lucide/vue'
 import NewRecordingModal from './NewRecordingModal.vue'
+
+const isIosApp = computed(() => {
+  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios'
+})
+
+const isReloading = ref(false)
+
+const handleReload = () => {
+  if (isReloading.value) return
+  isReloading.value = true
+  setTimeout(() => {
+    window.location.reload()
+  }, 100)
+}
 
 const authStore = useAuthStore()
 const isRecordingModalOpen = ref(false)
@@ -110,11 +134,12 @@ const isRecordingModalOpen = ref(false)
   border-right: 1px solid rgba(0, 0, 0, 0.07);
   display: flex;
   flex-direction: column;
-  padding: 1.5rem 1rem 1.25rem 1rem;
+  padding: calc(1.5rem + var(--safe-area-top, env(safe-area-inset-top, 0px))) calc(1rem + var(--safe-area-right, env(safe-area-inset-right, 0px))) calc(1.25rem + var(--safe-area-bottom, env(safe-area-inset-bottom, 0px))) calc(1rem + var(--safe-area-left, env(safe-area-inset-left, 0px)));
   z-index: 40;
   transition: transform 0.28s var(--apple-ease);
   user-select: none;
   -webkit-user-select: none;
+  box-sizing: border-box;
 }
 
 .logo-container {
@@ -364,6 +389,28 @@ const isRecordingModalOpen = ref(false)
 .user-card-role {
   font-size: 0.7rem;
   color: var(--text-muted);
+}
+
+.ios-reload-icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.4rem;
+  min-width: 34px;
+  min-height: 34px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ios-reload-icon-btn:hover {
+  background: rgba(0, 113, 227, 0.1);
+  color: var(--apple-blue);
 }
 
 .logout-icon-btn {

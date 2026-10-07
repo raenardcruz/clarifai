@@ -36,7 +36,7 @@
           <span>{{ copied ? 'Copied!' : 'Copy Summary' }}</span>
         </button>
 
-        <button class="apple-btn-secondary" @click="printSummary" v-if="recording.summary_md">
+        <button class="apple-btn-secondary" @click="printSummary" v-if="recording.summary_md && !isIosApp">
           <Printer size="14" />
           <span>Print / Save PDF</span>
         </button>
@@ -90,12 +90,17 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { Capacitor } from '@capacitor/core'
 import axios from 'axios'
 import moment from 'moment'
 import { marked } from 'marked'
 import { useToast } from 'primevue/usetoast'
 import { Calendar, Clock, Sparkles, Loader2, Printer, Copy, Check, Stethoscope } from '@lucide/vue'
 import { useTitle } from '@vueuse/core'
+
+const isIosApp = computed(() => {
+  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios'
+})
 
 const route = useRoute()
 const toast = useToast()

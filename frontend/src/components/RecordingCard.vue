@@ -27,11 +27,11 @@
             <Eye size="15" />
             <span>View Details</span>
           </router-link>
-          <a :href="`/api/recordings/${recording.id}/download/transcript`" class="apple-dropdown-item" v-if="isReady">
+          <a :href="`/api/recordings/${recording.id}/download/transcript`" class="apple-dropdown-item" v-if="isReady && !isIosApp">
             <FileText size="15" />
             <span>Download Transcript</span>
           </a>
-          <a :href="`/api/recordings/${recording.id}/download/summary`" class="apple-dropdown-item" v-if="isReady">
+          <a :href="`/api/recordings/${recording.id}/download/summary`" class="apple-dropdown-item" v-if="isReady && !isIosApp">
             <Sparkles size="15" />
             <span>Download Summary</span>
           </a>
@@ -109,6 +109,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { Capacitor } from '@capacitor/core'
 import { 
   Loader2, CheckCircle2, AlertCircle, Mic, MoreHorizontal, 
   Calendar, Clock, Eye, FileText, Sparkles, Trash2, ChevronRight, Stethoscope 
@@ -116,6 +117,10 @@ import {
 import { useToast } from 'primevue/usetoast'
 import moment from 'moment'
 import axios from 'axios'
+
+const isIosApp = computed(() => {
+  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios'
+})
 
 const props = defineProps({
   recording: { type: Object, required: true },

@@ -27,11 +27,6 @@
             <Mic size="16" />
             <span>Start Recording</span>
           </button>
-          
-          <button class="hero-secondary-btn" @click="isRecordingModalOpen = true">
-            <UploadCloud size="16" />
-            <span>Upload Audio File</span>
-          </button>
         </div>
       </div>
     </div>
