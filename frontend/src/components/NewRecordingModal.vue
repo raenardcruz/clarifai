@@ -11,21 +11,6 @@
         Record audio live with your microphone or import an existing audio/video file.
       </p>
 
-      <!-- Offline-first status banner -->
-      <div class="apple-offline-banner" :class="{ 'offline-mode': !isOnline }">
-        <div class="offline-banner-left">
-          <Wifi size="16" class="text-emerald" v-if="isOnline" />
-          <WifiOff size="16" class="text-amber" v-else />
-          <div class="offline-banner-text">
-            <strong>{{ isOnline ? 'Offline-First Ready:' : 'Offline Mode Active:' }}</strong>
-            <span>{{ isOnline ? ' Recordings are stored safely on-device before streaming to backend.' : ' Internet unavailable. Recording will be saved to device and automatically uploaded once connection is restored.' }}</span>
-          </div>
-        </div>
-        <span class="offline-banner-pill" :class="{ 'native-pill': isNative }">
-          {{ isNative ? 'iOS Background Recording' : 'Offline Storage' }}
-        </span>
-      </div>
-
       <!-- Warning Banner if API key not set -->
       <div v-if="!isKeySet && isOnline" class="apple-warning-banner">
         <AlertTriangle size="18" class="warning-icon" />
@@ -60,11 +45,14 @@
         </div>
       </div>
 
-      <!-- Medical Conversation Flag Toggle Option -->
+      <!-- Medical Conversation Flag Toggle Option (set at beginning before recording or upload) -->
       <div 
         class="medical-option-card" 
-        :class="{ 'is-medical-active': isMedical }" 
-        @click="isMedical = !isMedical"
+        :class="{ 
+          'is-medical-active': isMedical,
+          'is-disabled': isRecording || isUploading 
+        }" 
+        @click="(!isRecording && !isUploading) && (isMedical = !isMedical)"
       >
         <div class="medical-option-left">
           <div class="medical-icon-badge">
@@ -76,11 +64,15 @@
               <span class="medical-pill-tag">Clinical SOAP</span>
             </div>
             <p class="medical-desc">
-              Optimizes speech recognition for medical vocabulary and formats notes into a structured clinical SOAP summary.
+              Optimizes speech recognition for medical vocabulary and formats notes into a structured clinical SOAP summary. Must be set prior to starting recording or upload.
             </p>
           </div>
         </div>
-        <div class="apple-toggle-switch" :class="{ checked: isMedical }" @click.stop="isMedical = !isMedical">
+        <div 
+          class="apple-toggle-switch" 
+          :class="{ checked: isMedical, disabled: isRecording || isUploading }" 
+          @click.stop="(!isRecording && !isUploading) && (isMedical = !isMedical)"
+        >
           <span class="switch-handle"></span>
         </div>
       </div>
@@ -562,6 +554,12 @@ const uploadFile = async (file) => {
 .medical-option-card.is-medical-active {
   background: rgba(16, 185, 129, 0.07);
   border-color: rgba(16, 185, 129, 0.5);
+}
+
+.medical-option-card.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .medical-option-left {

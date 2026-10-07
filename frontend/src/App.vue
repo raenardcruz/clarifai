@@ -46,6 +46,7 @@ onMounted(() => {
 .app-container {
   display: flex;
   min-height: 100vh;
+  min-height: 100dvh;
   background-color: var(--bg-primary);
   color: var(--text-primary);
 }
@@ -66,6 +67,7 @@ onMounted(() => {
 .page-content {
   flex: 1;
   overflow-y: auto;
+  padding-bottom: var(--safe-area-bottom, env(safe-area-inset-bottom, 0px));
 }
 
 .sidebar-backdrop {

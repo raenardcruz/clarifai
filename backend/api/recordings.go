@@ -18,6 +18,8 @@ import (
 
 	"note-taker/backend/models"
 	"note-taker/backend/services"
+
+	"gorm.io/gorm"
 )
 
 const DataDir = "data"
@@ -525,7 +527,9 @@ func getRecordingDetails(c *gin.Context) {
 	db := models.GetDB()
 
 	var recording models.Recording
-	if err := db.Preload("Segments").Where("id = ? AND user_id = ?", recordingID, currentUser.ID).First(&recording).Error; err != nil {
+	if err := db.Preload("Segments", func(db *gorm.DB) *gorm.DB {
+		return db.Order("transcript_segments.start_time ASC")
+	}).Where("id = ? AND user_id = ?", recordingID, currentUser.ID).First(&recording).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Recording not found"})
 		return
 	}
@@ -575,8 +579,7 @@ func getSharedRecording(c *gin.Context) {
 }
 
 type UpdateRecordingRequest struct {
-	IsMedical *bool   `json:"is_medical"`
-	Title     *string `json:"title"`
+	Title *string `json:"title"`
 }
 
 func updateRecording(c *gin.Context) {
@@ -601,9 +604,6 @@ func updateRecording(c *gin.Context) {
 		return
 	}
 
-	if req.IsMedical != nil {
-		recording.IsMedical = *req.IsMedical
-	}
 	if req.Title != nil && strings.TrimSpace(*req.Title) != "" {
 		recording.Title = strings.TrimSpace(*req.Title)
 	}
@@ -661,7 +661,6 @@ func updateSegment(c *gin.Context) {
 
 type SummarizeRequest struct {
 	Instruction string `json:"instruction"`
-	IsMedical   *bool  `json:"is_medical"`
 }
 
 func triggerSummary(c *gin.Context) {
@@ -687,11 +686,6 @@ func triggerSummary(c *gin.Context) {
 
 	var req SummarizeRequest
 	_ = c.ShouldBindJSON(&req)
-
-	if req.IsMedical != nil && recording.IsMedical != *req.IsMedical {
-		recording.IsMedical = *req.IsMedical
-		db.Save(&recording)
-	}
 
 	go services.GenerateSummary(recordingID, req.Instruction)
 

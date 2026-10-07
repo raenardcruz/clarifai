@@ -1,5 +1,16 @@
 <template>
   <div class="auth-layout">
+    <!-- iOS App Reload Button -->
+    <button 
+      v-if="isIosApp"
+      class="auth-ios-refresh-btn"
+      @click="handleReload"
+      title="Reload Page"
+      aria-label="Reload Page"
+    >
+      <RotateCw size="15" :class="{ 'animate-spin': isReloading }" />
+    </button>
+
     <div class="auth-card">
       <!-- Apple App Icon & Header -->
       <div class="auth-header">
@@ -93,9 +104,23 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { Capacitor } from '@capacitor/core'
 import axios from 'axios'
-import { Sparkles, Mail, Lock, User as UserIcon, ArrowRight, Check, Loader2, Eye, EyeOff } from '@lucide/vue'
+import { Sparkles, Mail, Lock, User as UserIcon, ArrowRight, Check, Loader2, Eye, EyeOff, RotateCw } from '@lucide/vue'
+
+const isIosApp = computed(() => {
+  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios'
+})
+
+const isReloading = ref(false)
+const handleReload = () => {
+  if (isReloading.value) return
+  isReloading.value = true
+  setTimeout(() => {
+    window.location.reload()
+  }, 100)
+}
 
 const name = ref('')
 const email = ref('')
@@ -318,5 +343,32 @@ const handleRegister = async () => {
 
 .auth-link:hover {
   text-decoration: underline;
+}
+
+.auth-ios-refresh-btn {
+  position: absolute;
+  top: calc(1.25rem + var(--safe-area-top, env(safe-area-inset-top, 0px)));
+  right: calc(1.25rem + var(--safe-area-right, env(safe-area-inset-right, 0px)));
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  touch-action: manipulation;
+  z-index: 25;
+  transition: all 0.2s ease;
+}
+
+.auth-ios-refresh-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.auth-ios-refresh-btn:active {
+  transform: scale(0.92);
 }
 </style>

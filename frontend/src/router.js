@@ -19,6 +19,7 @@ const routes = [
   { path: '/recordings/:id', name: 'recording-show', component: RecordingShowView, meta: { requiresAuth: true } },
   { path: '/settings', name: 'settings', component: SettingsView, meta: { requiresAuth: true, requiresAdmin: true } },
   { path: '/users', name: 'users', component: UsersView, meta: { requiresAuth: true, requiresAdmin: true } },
+  { path: '/:catchAll(.*)*', redirect: '/' },
 ]
 
 const router = createRouter({
@@ -31,6 +32,8 @@ router.beforeEach((to, from, next) => {
   
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next('/login')
+  } else if ((to.name === 'login' || to.name === 'register') && authStore.isAuthenticated) {
+    next('/')
   } else if (to.meta.requiresAdmin && !authStore.isAdmin) {
     next('/')
   } else {

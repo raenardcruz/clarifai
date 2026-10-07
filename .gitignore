@@ -1,0 +1,41 @@
+# OS files
+.DS_Store
+**/.DS_Store
+
+# Environment / Secret configs
+.env
+.env.*
+*.env
+backend/.env
+frontend/.env
+!*.env.example
+
+# Node / Dependencies
+node_modules/
+**/node_modules/
+
+# Python / Backend caches & venvs
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+*.sqlite3
+
+# Xcode & Swift Package Manager caches / user data
+DerivedData/
+*.xcuserstate
+project.xcworkspace/xcuserdata/
+**/project.xcworkspace/xcuserdata/
+project.xcworkspace/xcshareddata/swiftpm/
+**/project.xcworkspace/xcshareddata/swiftpm/
+.swiftpm/
+**/.swiftpm/
+
+# IDE / Editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*~

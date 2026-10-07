@@ -29,15 +29,15 @@
                 <Users size="13" />
                 <span>{{ speakerCount }} {{ speakerCount === 1 ? 'Speaker' : 'Speakers' }}</span>
               </span>
-              <button 
-                class="meta-pill medical-toggle-pill" 
-                :class="{ 'is-active': recording.is_medical }"
-                @click="toggleMedicalFlag"
-                :title="recording.is_medical ? 'Medical Conversation (Click to unmark)' : 'Click to flag as Medical Conversation'"
+              <!-- Medical Conversation Badge (Read-only) -->
+              <span 
+                v-if="recording.is_medical" 
+                class="meta-pill medical-pill" 
+                title="Medical Conversation"
               >
                 <Stethoscope size="13" />
-                <span>{{ recording.is_medical ? 'Medical Conversation' : 'Mark as Medical' }}</span>
-              </button>
+                <span>Medical Conversation</span>
+              </span>
               <span class="status-pill" :class="statusClass">
                 <span class="beacon-dot" :class="beaconClass"></span>
                 <span>{{ formattedStatus }}</span>
@@ -53,7 +53,7 @@
               <span>Share</span>
             </button>
             
-            <a :href="`/api/recordings/${recording.id}/download/${activeTab}`" class="no-underline">
+            <a v-if="!isIosApp" :href="`/api/recordings/${recording.id}/download/${activeTab}`" class="no-underline">
               <button class="apple-btn-secondary" title="Export file">
                 <Download size="15" />
                 <span>Export</span>
@@ -117,7 +117,7 @@
             <button 
               class="apple-tool-btn no-print" 
               @click="printSummary" 
-              v-if="recording.summary_md"
+              v-if="recording.summary_md && !isIosApp"
             >
               <Printer size="14" />
               <span>Print / PDF</span>
@@ -136,6 +136,15 @@
               />
               <button v-if="transcriptSearch" @click="transcriptSearch = ''" class="clear-mini-btn">✕</button>
             </div>
+
+            <button 
+              class="apple-tool-btn" 
+              @click="toggleTranscriptSort" 
+              :title="transcriptSortOrder === 'asc' ? 'Sorted by time (Earliest first). Click to sort latest first.' : 'Sorted by time (Latest first). Click to sort earliest first.'"
+            >
+              <ArrowUpDown size="14" />
+              <span>{{ transcriptSortOrder === 'asc' ? 'Time: Earliest' : 'Time: Latest' }}</span>
+            </button>
 
             <button 
               class="apple-tool-btn" 
@@ -273,23 +282,17 @@
           Customize instructions or select quick focus topics for the AI summarization engine.
         </p>
 
-        <!-- Medical Conversation Toggle in Modal -->
+        <!-- Medical Encounter Status (Set before recording/upload) -->
         <div 
-          class="modal-medical-toggle" 
-          :class="{ 'is-active': isMedicalSummary }" 
-          @click="isMedicalSummary = !isMedicalSummary"
+          v-if="recording?.is_medical" 
+          class="modal-medical-info-banner"
         >
-          <div class="modal-medical-toggle-info">
-            <div class="modal-medical-icon">
-              <Stethoscope size="16" />
-            </div>
-            <div class="modal-medical-text">
-              <span class="modal-medical-title">Clinical SOAP / Medical Note</span>
-              <span class="modal-medical-sub">Format as Subjective, Objective, Assessment, and Plan</span>
-            </div>
+          <div class="modal-medical-icon">
+            <Stethoscope size="16" />
           </div>
-          <div class="apple-toggle-switch-sm" :class="{ checked: isMedicalSummary }">
-            <span class="switch-handle-sm"></span>
+          <div class="modal-medical-text">
+            <span class="modal-medical-title">Clinical SOAP / Medical Encounter</span>
+            <span class="modal-medical-sub">Summary will follow structured Subjective, Objective, Assessment, and Plan format</span>
           </div>
         </div>
 
@@ -334,6 +337,22 @@
     </Dialog>
   </div>
 
+  <!-- Error State -->
+  <div v-else-if="loadError" class="full-page-loader">
+    <div class="apple-doc-card text-center max-w-md p-8">
+      <h3 style="font-size: 1.15rem; font-weight: 700; color: #E03131; margin-bottom: 0.5rem;">Unable to Load Recording</h3>
+      <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1.25rem;">{{ loadError }}</p>
+      <div style="display: flex; justify-content: center; gap: 0.75rem;">
+        <router-link to="/recordings" class="apple-btn-secondary" style="text-decoration: none;">
+          Back to Recordings
+        </router-link>
+        <button class="apple-primary-btn" @click="fetchData">
+          Retry
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Loading Full Page -->
   <div v-else class="full-page-loader">
     <Loader2 class="animate-spin text-blue" size="44" />
@@ -351,22 +370,29 @@ import { useToast } from 'primevue/usetoast'
 import { 
   Calendar, Clock, Share2, Download, Wand2, Sparkles, Loader2, 
   Pencil, Trash2, UserCheck, Printer, ChevronLeft, Users, 
-  FileText, Copy, Check, Search, Stethoscope 
+  FileText, Copy, Check, Search, Stethoscope, ArrowUpDown 
 } from '@lucide/vue'
 import { useIntervalFn, useTitle } from '@vueuse/core'
 import Dialog from 'primevue/dialog'
+import { Capacitor } from '@capacitor/core'
 import SpeechmaticsUsage from '../components/SpeechmaticsUsage.vue'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+
+const isIosApp = computed(() => {
+  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios'
+})
+
 const recording = ref(null)
+const loadError = ref(null)
 const activeTab = ref('summary')
 const isGenerating = ref(false)
 const isIdentifyingSpeakers = ref(false)
 const editingSpeakerOrigName = ref('')
 const showSummaryModal = ref(false)
-const isMedicalSummary = ref(false)
+const transcriptSortOrder = ref('asc')
 const specialInstruction = ref('')
 const copiedSummary = ref(false)
 const transcriptSearch = ref('')
@@ -411,11 +437,24 @@ const readingTime = computed(() => {
   return Math.max(1, Math.ceil(wordCount.value / 200))
 })
 
-const filteredSegments = computed(() => {
+const toggleTranscriptSort = () => {
+  transcriptSortOrder.value = transcriptSortOrder.value === 'asc' ? 'desc' : 'asc'
+}
+
+const sortedSegments = computed(() => {
   if (!recording.value?.segments) return []
-  if (!transcriptSearch.value) return recording.value.segments
+  return [...recording.value.segments].sort((a, b) => {
+    const timeA = typeof a.start === 'number' ? a.start : (parseFloat(a.start) || 0)
+    const timeB = typeof b.start === 'number' ? b.start : (parseFloat(b.start) || 0)
+    return transcriptSortOrder.value === 'asc' ? timeA - timeB : timeB - timeA
+  })
+})
+
+const filteredSegments = computed(() => {
+  const list = sortedSegments.value
+  if (!transcriptSearch.value) return list
   const q = transcriptSearch.value.toLowerCase()
-  return recording.value.segments.filter(s => 
+  return list.filter(s => 
     s.speaker.toLowerCase().includes(q) || s.text.toLowerCase().includes(q)
   )
 })
@@ -471,6 +510,7 @@ const startPolling = () => { resume() }
 const stopPolling = () => { pause() }
 
 const fetchData = async () => {
+  loadError.value = null
   try {
     const res = await axios.get(`/api/recordings/${route.params.id}`)
     recording.value = res.data
@@ -483,7 +523,8 @@ const fetchData = async () => {
     }
   } catch (e) {
     console.error("Failed to load recording", e)
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Recording not found.', life: 5000 })
+    loadError.value = e.response?.data?.detail || e.message || 'Recording not found'
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load recording. Please check connection or try again.', life: 5000 })
   }
 }
 
@@ -538,27 +579,7 @@ const updateSegment = async (segment) => {
 }
 
 const openSummaryModal = () => {
-  isMedicalSummary.value = !!recording.value?.is_medical
   showSummaryModal.value = true
-}
-
-const toggleMedicalFlag = async () => {
-  if (!recording.value) return
-  try {
-    const updated = !recording.value.is_medical
-    await axios.patch(`/api/recordings/${recording.value.id}`, { is_medical: updated })
-    recording.value.is_medical = updated
-    toast.add({
-      severity: 'success',
-      summary: updated ? 'Medical Flag Set' : 'Medical Flag Removed',
-      detail: updated 
-        ? 'Flagged as medical conversation. You can regenerate the summary to produce a Clinical SOAP Note.' 
-        : 'Medical conversation flag removed.',
-      life: 4000
-    })
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to update medical flag.', life: 4000 })
-  }
 }
 
 const submitRegenerateSummary = async () => {
@@ -567,11 +588,8 @@ const submitRegenerateSummary = async () => {
   try {
     await axios.post(`/api/recordings/${recording.value.id}/summarize`, {
       instruction: specialInstruction.value,
-      is_medical: isMedicalSummary.value
+      is_medical: !!recording.value?.is_medical
     })
-    if (recording.value) {
-      recording.value.is_medical = isMedicalSummary.value
-    }
     toast.add({ severity: 'info', summary: 'AI Synthesis Started', detail: 'Generating summary...', life: 5000 })
     fetchData()
   } catch (e) {
@@ -603,9 +621,24 @@ const identifySpeakers = async () => {
 }
 
 const shareLink = () => {
-  const url = `${window.location.origin}/share/${recording.value.id}`
-  navigator.clipboard.writeText(url)
-  toast.add({ severity: 'success', summary: 'Copied Link', detail: 'Public sharing link copied to clipboard!', life: 3000 })
+  const origin = window.location.origin || ''
+  const isLocalOrNative = Capacitor.isNativePlatform() || 
+    origin.includes('localhost') || 
+    origin.startsWith('notetaker') || 
+    origin.startsWith('capacitor')
+    
+  const publicBase = import.meta.env.VITE_APP_URL || (isLocalOrNative ? 'https://clarifai.raenardcruz.com' : origin)
+  const url = `${publicBase.replace(/\/+$/, '')}/share/${recording.value.id}`
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url)
+  }
+  toast.add({ 
+    severity: 'success', 
+    summary: 'Copied Public Link', 
+    detail: 'Public sharing link copied to clipboard!', 
+    life: 3500 
+  })
 }
 
 const printSummary = () => {
@@ -753,22 +786,9 @@ const getSpeakerColor = (name) => {
   font-weight: 500;
 }
 
-.medical-toggle-pill {
-  cursor: pointer;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  transition: all 0.2s ease;
-  user-select: none;
-}
-
-.medical-toggle-pill:hover {
-  background: rgba(16, 185, 129, 0.08);
-  border-color: rgba(16, 185, 129, 0.3);
-  color: #047857;
-}
-
-.medical-toggle-pill.is-active {
-  background: rgba(16, 185, 129, 0.14);
-  border-color: rgba(16, 185, 129, 0.4);
+.medical-pill {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.3);
   color: #047857;
   font-weight: 600;
 }
@@ -777,34 +797,15 @@ const getSpeakerColor = (name) => {
   background: rgba(16, 185, 129, 0.12) !important;
 }
 
-.modal-medical-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1rem;
-  background: rgba(0, 0, 0, 0.02);
-  border: 1.5px solid rgba(0, 0, 0, 0.08);
-  border-radius: var(--radius-md);
-  margin-bottom: 1rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  user-select: none;
-}
-
-.modal-medical-toggle:hover {
-  background: rgba(16, 185, 129, 0.04);
-  border-color: rgba(16, 185, 129, 0.3);
-}
-
-.modal-medical-toggle.is-active {
-  background: rgba(16, 185, 129, 0.08);
-  border-color: rgba(16, 185, 129, 0.45);
-}
-
-.modal-medical-toggle-info {
+.modal-medical-info-banner {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1.5px solid rgba(16, 185, 129, 0.25);
+  border-radius: var(--radius-md);
+  margin-bottom: 1rem;
 }
 
 .modal-medical-icon {

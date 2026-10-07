@@ -104,3 +104,14 @@ export async function deleteOfflineRecording(id) {
     tx.onerror = () => reject(tx.error)
   })
 }
+
+export async function clearAllOfflineRecordings() {
+  const db = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([STORE_RECORDINGS, STORE_AUDIO_BLOBS], 'readwrite')
+    tx.objectStore(STORE_RECORDINGS).clear()
+    tx.objectStore(STORE_AUDIO_BLOBS).clear()
+    tx.oncomplete = () => resolve(true)
+    tx.onerror = () => reject(tx.error)
+  })
+}
