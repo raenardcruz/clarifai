@@ -6,14 +6,21 @@ This document outlines the step-by-step instructions to run the **Note-Taker AI*
 
 ## 🏃 Step-by-Step Launch Guide
 
-To run the application, you need three separate terminals running (or run them in the background):
+To run the application, you need separate terminals running (or run them in the background):
 
-### 1. Start Ollama
-Ensure the Ollama application is running and the required model is loaded:
-```bash
-ollama run gemma4:12b-mlx
-```
-*(If you want to run Ollama in the background, you can close the prompt after verification, as the API remains active at `http://localhost:11434`)*
+### 1. Set Up Your AI Provider (Ollama or Google Gemini)
+
+You can choose between **Ollama (local)** or **Google Gemini (cloud)** in the app's Settings page:
+
+- **If using Ollama (Local)**:
+  Ensure Ollama is running and the model is loaded:
+  ```bash
+  ollama run gemma4:12b-mlx
+  ```
+  *(If running in the background, the Ollama API remains active at `http://localhost:11434`)*
+
+- **If using Google Gemini (Cloud)**:
+  No local LLM daemon required! Configure your **Gemini API Key** and choose your model (`gemini-4-argon`, `gemini-3.8-flash`, or `gemini-3.5-flash-lite`) directly in the **System Settings** page or in `backend/.env` via `GEMINI_API_KEY`.
 
 ---
 
@@ -45,7 +52,6 @@ go run main.go
      ```bash
      docker run -p 8000:8000 \
        -e POSTGRES_HOST=host.docker.internal \
-       -e OLLAMA_URL=http://host.docker.internal:11434 \
        --env-file .env \
        -v note_taker_data:/app/data \
        note-taker-backend
@@ -55,7 +61,6 @@ go run main.go
      ```bash
      docker run -p 8084:8000 \
        -e POSTGRES_HOST=host.docker.internal \
-       -e OLLAMA_URL=http://host.docker.internal:11434 \
        --env-file .env \
        -v note_taker_data:/app/data \
        note-taker-backend
@@ -63,7 +68,7 @@ go run main.go
      *(Note: If you run the backend on port `8084`, update `frontend/vite.config.js` proxy target to `http://localhost:8084` or set `VITE_API_BASE_URL=http://localhost:8084` in `frontend/.env`).*
 
 > [!NOTE]
-> **Why `host.docker.internal`?** Inside Docker containers, `localhost` refers to the container itself. Passing `-e POSTGRES_HOST=host.docker.internal` and `-e OLLAMA_URL=http://host.docker.internal:11434` allows the container to connect to PostgreSQL and Ollama running on your Mac/host machine.
+> **Database-Driven Settings**: To minimize environment variable management, AI configuration (Ollama host URL, Ollama models, Gemini models, Gemini API keys, and Speechmatics API keys) is managed directly in the **System Settings** page and saved in the database! Inside Docker containers, if you run Ollama on your host Mac, simply set the Ollama Server URL to `http://host.docker.internal:11434` in the Settings page.
 
 The backend server will run on [http://localhost:8000](http://localhost:8000) (or your chosen host port).
 

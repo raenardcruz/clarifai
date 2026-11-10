@@ -8,31 +8,22 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"note-taker/backend/models"
 )
 
 const OllamaModel = "gemma4:12b-mlx"
+const DefaultGeminiModel = "gemini-3.8-flash"
 
-func getOllamaURL(path string) string {
-	url := os.Getenv("OLLAMA_URL")
-	if url == "" {
-		url = os.Getenv("OLLAMA_HOST")
-	}
-	if url == "" {
-		url = "http://localhost:11434"
-	}
-	url = strings.TrimSuffix(url, "/")
-	if strings.Contains(url, "/api/") {
-		if strings.HasSuffix(url, "/api/generate") && path == "/api/tags" {
-			return strings.Replace(url, "/api/generate", "/api/tags", 1)
-		}
-		if strings.HasSuffix(url, "/api/tags") && path == "/api/generate" {
-			return strings.Replace(url, "/api/tags", "/api/generate", 1)
-		}
-		return url
-	}
-	return url + path
+var GeminiModels = []string{
+	"gemini-4-argon",
+	"gemini-3.8-flash",
+	"gemini-3.5-flash-lite",
+}
+
+func GetGeminiModels() []string {
+	return GeminiModels
 }
 
 type OllamaRequest struct {
@@ -51,15 +42,98 @@ type OllamaTagsResponse struct {
 	} `json:"models"`
 }
 
-func getModelName() string {
+type GeminiPart struct {
+	Text string `json:"text"`
+}
+
+type GeminiContent struct {
+	Role  string       `json:"role,omitempty"`
+	Parts []GeminiPart `json:"parts"`
+}
+
+type GeminiRequest struct {
+	Contents []GeminiContent `json:"contents"`
+}
+
+type GeminiCandidate struct {
+	Content struct {
+		Parts []GeminiPart `json:"parts"`
+		Role  string       `json:"role"`
+	} `json:"content"`
+	FinishReason string `json:"finishReason"`
+}
+
+type GeminiResponse struct {
+	Candidates []GeminiCandidate `json:"candidates"`
+	Error      *struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Status  string `json:"status"`
+	} `json:"error,omitempty"`
+}
+
+func getAISettings() (provider, ollamaURL, ollamaModel, geminiModel, geminiKey, geminiBase string) {
+	provider = "ollama"
+	ollamaURL = "http://localhost:11434"
+	ollamaModel = OllamaModel
+	geminiModel = DefaultGeminiModel
+	geminiKey = os.Getenv("GEMINI_API_KEY")
+	geminiBase = os.Getenv("GEMINI_API_BASE")
+
+	if envOllama := os.Getenv("OLLAMA_URL"); envOllama != "" {
+		ollamaURL = envOllama
+	} else if envOllamaHost := os.Getenv("OLLAMA_HOST"); envOllamaHost != "" {
+		ollamaURL = envOllamaHost
+	}
+
 	db := models.GetDB()
 	if db != nil {
 		var settings models.Settings
-		if err := db.First(&settings).Error; err == nil && settings.OllamaModel != "" {
-			return settings.OllamaModel
+		if err := db.First(&settings).Error; err == nil {
+			if settings.AIProvider != "" {
+				provider = settings.AIProvider
+			}
+			if settings.OllamaURL != "" {
+				ollamaURL = settings.OllamaURL
+			}
+			if settings.OllamaModel != "" {
+				ollamaModel = settings.OllamaModel
+			}
+			if settings.GeminiModel != "" {
+				geminiModel = settings.GeminiModel
+			}
+			if settings.GeminiAPIKey != nil && *settings.GeminiAPIKey != "" {
+				geminiKey = *settings.GeminiAPIKey
+			}
+			if settings.GeminiAPIBase != "" {
+				geminiBase = settings.GeminiAPIBase
+			}
 		}
 	}
-	return OllamaModel
+	return
+}
+
+func getOllamaURL(path string) string {
+	_, ollamaURL, _, _, _, _ := getAISettings()
+	url := strings.TrimSuffix(ollamaURL, "/")
+	if strings.Contains(url, "/api/") {
+		if strings.HasSuffix(url, "/api/generate") && path == "/api/tags" {
+			return strings.Replace(url, "/api/generate", "/api/tags", 1)
+		}
+		if strings.HasSuffix(url, "/api/tags") && path == "/api/generate" {
+			return strings.Replace(url, "/api/tags", "/api/generate", 1)
+		}
+		return url
+	}
+	return url + path
+}
+
+func getModelName() string {
+	provider, _, ollamaModel, geminiModel, _, _ := getAISettings()
+	if strings.EqualFold(provider, "gemini") {
+		return geminiModel
+	}
+	return ollamaModel
 }
 
 func GetOllamaModels() ([]string, error) {
@@ -96,46 +170,166 @@ func GetOllamaModels() ([]string, error) {
 	return modelsList, nil
 }
 
-func GenerateCustomSummary(transcript string, prompt string) string {
-	systemPrompt := fmt.Sprintf("%s\n\nFormat the output in clean Markdown.", prompt)
-	fullPrompt := fmt.Sprintf("%s\n\nTranscript:\n%s", systemPrompt, transcript)
+func callGemini(model string, apiKey string, customBase string, prompt string) (string, error) {
+	apiKey = strings.TrimSpace(apiKey)
+	if apiKey == "" {
+		return "", fmt.Errorf("Gemini API key is not configured. Please enter your Gemini API key in Settings")
+	}
+	if model == "" {
+		model = DefaultGeminiModel
+	}
 
+	apiURL := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent", model)
+	if customBase != "" {
+		apiURL = fmt.Sprintf("%s/models/%s:generateContent", strings.TrimSuffix(customBase, "/"), model)
+	}
+
+	reqPayload := GeminiRequest{
+		Contents: []GeminiContent{
+			{
+				Parts: []GeminiPart{
+					{Text: prompt},
+				},
+			},
+		},
+	}
+
+	jsonData, err := json.Marshal(reqPayload)
+	if err != nil {
+		return "", fmt.Errorf("could not marshal Gemini request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("could not create Gemini request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", apiKey)
+
+	client := &http.Client{Timeout: 90 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("could not connect to Gemini API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read Gemini API response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp GeminiResponse
+		if jsonErr := json.Unmarshal(body, &errResp); jsonErr == nil && errResp.Error != nil && errResp.Error.Message != "" {
+			return "", fmt.Errorf("Gemini API error (%d): %s", resp.StatusCode, errResp.Error.Message)
+		}
+		return "", fmt.Errorf("Gemini API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var geminiResp GeminiResponse
+	if err := json.Unmarshal(body, &geminiResp); err != nil {
+		return "", fmt.Errorf("failed to parse Gemini response: %w", err)
+	}
+
+	if geminiResp.Error != nil && geminiResp.Error.Message != "" {
+		return "", fmt.Errorf("Gemini API error: %s", geminiResp.Error.Message)
+	}
+
+	if len(geminiResp.Candidates) == 0 {
+		return "", fmt.Errorf("Gemini returned no response candidates")
+	}
+
+	candidate := geminiResp.Candidates[0]
+	if len(candidate.Content.Parts) == 0 {
+		if candidate.FinishReason != "" && candidate.FinishReason != "STOP" {
+			return "", fmt.Errorf("Gemini generation stopped (%s)", candidate.FinishReason)
+		}
+		return "", fmt.Errorf("Gemini returned empty candidate content")
+	}
+
+	var sb strings.Builder
+	for _, part := range candidate.Content.Parts {
+		sb.WriteString(part.Text)
+	}
+
+	res := strings.TrimSpace(sb.String())
+	if res == "" {
+		return "", fmt.Errorf("Gemini returned empty response text")
+	}
+
+	return res, nil
+}
+
+func callOllama(model string, prompt string) (string, error) {
+	if model == "" {
+		model = OllamaModel
+	}
 	reqPayload := OllamaRequest{
-		Model:  getModelName(),
-		Prompt: fullPrompt,
+		Model:  model,
+		Prompt: prompt,
 		Stream: false,
 	}
 
 	jsonData, err := json.Marshal(reqPayload)
 	if err != nil {
-		return fmt.Sprintf("> [!ERROR]\n> Could not marshal request. Error: %v", err)
+		return "", fmt.Errorf("could not marshal Ollama request: %w", err)
 	}
 
-	resp, err := http.Post(getOllamaURL("/api/generate"), "application/json", bytes.NewBuffer(jsonData))
+	client := &http.Client{Timeout: 180 * time.Second}
+	resp, err := client.Post(getOllamaURL("/api/generate"), "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		return fmt.Sprintf("> [!ERROR]\n> Could not generate summary. Please check if Ollama is running.\n\nError details: %v", err)
+		return "", fmt.Errorf("could not connect to Ollama. Please check if Ollama is running.\n\nError details: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Sprintf("> [!ERROR]\n> Ollama returned non-200 status code: %d", resp.StatusCode)
+		return "", fmt.Errorf("Ollama returned non-200 status code: %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Sprintf("> [!ERROR]\n> Failed to read Ollama response: %v", err)
+		return "", fmt.Errorf("failed to read Ollama response: %w", err)
 	}
 
 	var ollamaResp OllamaResponse
 	if err := json.Unmarshal(body, &ollamaResp); err != nil {
-		return fmt.Sprintf("> [!ERROR]\n> Failed to parse Ollama response: %v", err)
+		return "", fmt.Errorf("failed to parse Ollama response: %v", err)
 	}
 
-	if ollamaResp.Response == "" {
+	if strings.TrimSpace(ollamaResp.Response) == "" {
+		return "", fmt.Errorf("Ollama returned empty response")
+	}
+
+	return ollamaResp.Response, nil
+}
+
+func generateText(prompt string) (string, error) {
+	provider, _, ollamaModel, geminiModel, geminiKey, geminiBase := getAISettings()
+	if strings.EqualFold(provider, "gemini") {
+		return callGemini(geminiModel, geminiKey, geminiBase, prompt)
+	}
+	return callOllama(ollamaModel, prompt)
+}
+
+func GenerateCustomSummary(transcript string, prompt string) string {
+	systemPrompt := fmt.Sprintf("%s\n\nFormat the output in clean Markdown.", prompt)
+	fullPrompt := fmt.Sprintf("%s\n\nTranscript:\n%s", systemPrompt, transcript)
+
+	resp, err := generateText(fullPrompt)
+	if err != nil {
+		provider, _, _, _, _, _ := getAISettings()
+		providerName := "Ollama"
+		if strings.EqualFold(provider, "gemini") {
+			providerName = "Google Gemini"
+		}
+		return fmt.Sprintf("> [!ERROR]\n> Could not generate summary via %s.\n\nError details: %v", providerName, err)
+	}
+
+	if strings.TrimSpace(resp) == "" {
 		return "Error: No response generated."
 	}
 
-	return ollamaResp.Response
+	return resp
 }
 
 func GenerateSummaryAndTitle(transcript string) string {
@@ -155,38 +349,12 @@ func GenerateTitleForRecording(transcript string, isMedical bool) string {
 	}
 	fullPrompt := fmt.Sprintf("%s\n\nTranscript:\n%s", systemPrompt, transcript)
 
-	reqPayload := OllamaRequest{
-		Model:  getModelName(),
-		Prompt: fullPrompt,
-		Stream: false,
-	}
-
-	jsonData, err := json.Marshal(reqPayload)
+	resp, err := generateText(fullPrompt)
 	if err != nil {
 		return fallback
 	}
 
-	resp, err := http.Post(getOllamaURL("/api/generate"), "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fallback
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fallback
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fallback
-	}
-
-	var ollamaResp OllamaResponse
-	if err := json.Unmarshal(body, &ollamaResp); err != nil {
-		return fallback
-	}
-
-	title := strings.TrimSpace(ollamaResp.Response)
+	title := strings.TrimSpace(resp)
 	title = strings.ReplaceAll(title, "\"", "")
 	title = strings.ReplaceAll(title, "'", "")
 	title = strings.TrimSpace(title)
@@ -206,7 +374,6 @@ func GenerateTitleForRecording(transcript string, isMedical bool) string {
 	return title
 }
 
-
 func DetectSpeakers(transcript string, speakerLabels []string) map[string]string {
 	labelsStr := strings.Join(speakerLabels, ", ")
 	systemPrompt := fmt.Sprintf(
@@ -219,41 +386,16 @@ func DetectSpeakers(transcript string, speakerLabels []string) map[string]string
 		labelsStr, labelsStr,
 	)
 
-	reqPayload := OllamaRequest{
-		Model:  getModelName(),
-		Prompt: fmt.Sprintf("%s\n\nTranscript:\n%s", systemPrompt, transcript),
-		Stream: false,
-	}
-
 	result := make(map[string]string)
+	fullPrompt := fmt.Sprintf("%s\n\nTranscript:\n%s", systemPrompt, transcript)
 
-	jsonData, err := json.Marshal(reqPayload)
+	resp, err := generateText(fullPrompt)
 	if err != nil {
 		return result
 	}
 
-	resp, err := http.Post(getOllamaURL("/api/generate"), "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return result
-	}
-	defer resp.Body.Close()
+	text := strings.TrimSpace(resp)
 
-	if resp.StatusCode != http.StatusOK {
-		return result
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return result
-	}
-
-	var ollamaResp OllamaResponse
-	if err := json.Unmarshal(body, &ollamaResp); err != nil {
-		return result
-	}
-
-	text := strings.TrimSpace(ollamaResp.Response)
-	
 	// Strip markdown code block if present
 	if strings.HasPrefix(text, "```") {
 		lines := strings.Split(text, "\n")

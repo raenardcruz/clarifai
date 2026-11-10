@@ -8,13 +8,15 @@ This document details the system architecture, file structure, and technical com
 
 The system uses a decoupled, three-tier architecture:
 
-1. **Frontend**: A modern, single-page application built with **Vue 3** and **Vite**. It handles audio uploads, polls the API for job updates, and renders the interactive job lists.
+1. **Frontend**: A modern, single-page application built with **Vue 3** and **Vite**. It handles audio uploads, polls the API for job updates, configures system settings, and renders interactive job lists.
 2. **iOS App & Mobile Architecture**: Powered by **Capacitor iOS** with a native Swift audio plugin (`NativeAudioRecorderPlugin.swift`). Configured with `UIBackgroundModes: ["audio"]` and `AVAudioSessionCategoryPlayAndRecord` to enable continuous recording even when the iPhone sleeps or apps are switched. Uses an **offline-first** pipeline storing audio locally before streaming chunks to the backend upon network reconnection.
 3. **Backend**: A **Go** web server using the **Gin** framework. It exposes RESTful API endpoints for user authentication, settings configuration, chunked file uploads, and retrieving recordings. It manages asynchronous background goroutines for audio processing.
 4. **Database**: **PostgreSQL** is utilized via **GORM** to store user information, app settings, recording metadata, and transcript segments.
 5. **AI Pipeline**:
    - **Speechmatics API**: Cloud-based service for speech-to-text transcription and integrated speaker diarization.
-   - **Ollama**: Local LLM endpoint for meeting summarization and action item generation.
+   - **AI Summarization Engine**: Supports configurable providers toggled via System Settings:
+     - **Ollama**: Local LLM endpoint (default model: `gemma4:12b-mlx`, or any pulled local model).
+     - **Google Gemini**: Cloud API supporting `gemini-4-argon`, `gemini-3.8-flash`, and `gemini-3.5-flash-lite`, authenticated with a user-provided Gemini API Key.
 
 ```mermaid
 graph TD
@@ -25,7 +27,9 @@ graph TD
     Backend -->|Spawns Goroutine| Pipeline[Audio Processing Pipeline]
     Pipeline -->|Probes Duration| FFmpeg[FFmpeg / ffprobe]
     Pipeline -->|Transcribe & Diarize| Speechmatics[Speechmatics Cloud API]
-    Pipeline -->|Summarize| Ollama[(Ollama Local LLM)]
+    Pipeline -->|Summarize| AI{AI Provider Selector}
+    AI -->|Local| Ollama[(Ollama Local LLM)]
+    AI -->|Cloud| Gemini[(Google Gemini API)]
     Pipeline -->|Updates state| DB
 ```
 
@@ -45,7 +49,7 @@ graph TD
 │   ├── /api
 │   │   ├── auth.go              # User registration and login handlers
 │   │   ├── users.go             # User profile handlers
-│   │   ├── settings.go          # System settings handlers
+│   │   ├── settings.go          # System settings handlers & model endpoints
 │   │   └── recordings.go        # Upload, listing, updates, delete, and download routes
 │   ├── /models
 │   │   ├── database.go          # PostgreSQL connection initialization and seeding
@@ -54,15 +58,20 @@ graph TD
 │   └── /services
 │       ├── audio_service.go     # Audio processing orchestration
 │       ├── speechmatics_service.go # Speechmatics transcription API integration
-│       └── ai_service.go        # Ollama summary generation integration
+│       ├── ai_service.go        # Ollama & Google Gemini LLM integration
+│       └── ai_service_test.go   # AI service unit tests
 └── /frontend
     ├── package.json             # NPM dependencies and scripts
     ├── vite.config.js           # Vite server configuration
     ├── index.html               # Main entry HTML
     └── /src
         ├── main.js              # Vue app initializer
-        ├── App.vue              # Dashboard and upload layout
+        ├── App.vue              # Dashboard and layout
         ├── style.css            # Vanilla CSS design tokens & layouts
+        ├── /views
+        │   ├── SettingsView.vue # AI Provider, models, and server settings
+        │   ├── RecordingsView.vue # Meeting recordings list
+        │   └── RecordingShowView.vue # Meeting details, transcript, and SOAP notes
         └── /components
             └── JobCard.vue      # Individual meeting job status card
 ```
@@ -88,8 +97,10 @@ All routes require JWT authentication except where noted:
 - **`GET /api/recordings/share/:recording_id`**: (Public) Retrieves a shared recording without authentication.
 
 ### ⚙️ Settings (`/api/settings`)
-- **`GET /api/settings`**: Retrieves application settings (e.g. Speechmatics API Key, selected Ollama model).
-- **`PUT /api/settings`**: Updates application settings.
+- **`GET /api/settings`**: Retrieves application settings (AI provider, Ollama URL, selected Ollama/Gemini model, optional Gemini endpoint base, and masked API keys).
+- **`PUT /api/settings`**: Updates application settings and persists them to the PostgreSQL database (supports `ai_provider` (`ollama` | `gemini`), `ollama_url`, `ollama_model`, `gemini_model`, `gemini_api_key`, `gemini_api_base`, `speechmatics_api_key`, summarization trigger mode, and custom prompts). This minimizes backend environment variable requirements.
+- **`GET /api/settings/ollama-models`**: Retrieves list of locally available Ollama models from the configured Ollama URL.
+- **`GET /api/settings/gemini-models`**: Retrieves list of supported Gemini models (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.5-flash-lite`).
 
 ---
 
@@ -99,5 +110,5 @@ The core audio processing orchestrator is located in [audio_service.go](file:///
 
 1. **Pre-processing (FFmpeg)**: Uses `ffprobe` to determine and record the duration of the audio.
 2. **Transcription & Diarization (Speechmatics)**: Sends the audio file to the Speechmatics Cloud API with diarization enabled (implemented in [speechmatics_service.go](file:///Users/raenard/Documents/note-taker/backend/services/speechmatics_service.go)). Polls the API until the job status is finished, then retrieves and parses the JSON transcript into speaker-separated segments.
-3. **Summarization (Ollama)**: Passes the final diarized transcript segments to the local Ollama LLM endpoint to generate a meeting title, executive summary, and action items (implemented in [ai_service.go](file:///Users/raenard/Documents/note-taker/backend/services/ai_service.go)).
+3. **Summarization & Title (Ollama or Google Gemini)**: Passes the final diarized transcript segments to the active AI engine configured in Settings (implemented in [ai_service.go](file:///Users/raenard/Documents/note-taker/backend/services/ai_service.go)). Automatically applies either standard executive summary instructions or specialized clinical SOAP notes prompts depending on the recording's classification.
 4. **Persistence**: Saves and updates all intermediate states (pending ➡️ processing ➡️ completed/error) and results directly to PostgreSQL.

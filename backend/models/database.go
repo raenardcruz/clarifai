@@ -138,6 +138,10 @@ func SeedDB() {
 		log.Println("Creating default settings...")
 		defaultSettings := Settings{
 			MedicalSummaryPrompt: DefaultMedicalSummaryPrompt,
+			AIProvider:           "ollama",
+			OllamaURL:            "http://localhost:11434",
+			OllamaModel:          "gemma4:12b-mlx",
+			GeminiModel:          "gemini-3.8-flash",
 		}
 		if err := DB.Create(&defaultSettings).Error; err != nil {
 
@@ -146,8 +150,11 @@ func SeedDB() {
 			log.Println("Default settings created.")
 		}
 	} else {
-		// Update empty/null ollama_model in existing settings
+		// Update empty/null fields in existing settings
+		DB.Model(&Settings{}).Where("ollama_url = ? OR ollama_url IS NULL", "").Update("ollama_url", "http://localhost:11434")
 		DB.Model(&Settings{}).Where("ollama_model = ? OR ollama_model IS NULL", "").Update("ollama_model", "gemma4:12b-mlx")
+		DB.Model(&Settings{}).Where("ai_provider = ? OR ai_provider IS NULL", "").Update("ai_provider", "ollama")
+		DB.Model(&Settings{}).Where("gemini_model = ? OR gemini_model IS NULL", "").Update("gemini_model", "gemini-3.8-flash")
 		DB.Model(&Settings{}).Where("medical_summary_prompt = ? OR medical_summary_prompt IS NULL", "").Update("medical_summary_prompt", DefaultMedicalSummaryPrompt)
 	}
 }

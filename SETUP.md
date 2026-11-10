@@ -14,8 +14,9 @@ Before setting up the project, ensure you have the following installed on your m
    - **macOS**: `brew install ffmpeg`
    - **Linux**: `sudo apt install ffmpeg`
    - **Windows**: Install via scoop/chocolatey or download the binaries and add them to your system path.
-4. **Ollama**: For local LLM processing (meeting summary and title generation).
-   - Download and install from [ollama.com](https://ollama.com/).
+4. **AI Summarization Engine (Ollama or Google Gemini)**:
+   - **Ollama**: For local offline LLM processing (meeting summary and title generation). Download and install from [ollama.com](https://ollama.com/).
+   - **Google Gemini**: Alternatively, use Google Gemini cloud models (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.5-flash-lite`) with a Google Gemini API Key.
 5. **PostgreSQL**: Used for user, settings, and recording data storage.
 
 ---
@@ -36,7 +37,7 @@ Before setting up the project, ensure you have the following installed on your m
      ```bash
      touch backend/.env
      ```
-   * Add the database connection details, Speechmatics API Key, and a JWT signing secret:
+   * Environment variables are kept to a minimum (only PostgreSQL connection and optional JWT secret). All operational settings (Speechmatics API Key, Gemini API Key, Ollama URL, Ollama/Gemini models, and prompts) are configured in the **Settings** page and saved in the database:
      ```env
      POSTGRES_USER="your_postgres_user"
      POSTGRES_PASSWORD="your_postgres_password"
@@ -45,7 +46,7 @@ Before setting up the project, ensure you have the following installed on your m
      POSTGRES_DB="clarifi_db"
      SECRET_KEY="your_jwt_signing_secret"
      ```
-   * *Note: Speechmatics API key can be configured directly through the Settings UI once the application is running.*
+   * *(Optional fallback: You can also specify `SPEECHMATICS_API_KEY`, `GEMINI_API_KEY`, or `OLLAMA_URL` in `.env` if you prefer environment-based overrides, but the Settings UI and database take precedence).*
 
 ### Option B: Docker Setup (Recommended for containerized deployment)
 
@@ -59,22 +60,21 @@ Before setting up the project, ensure you have the following installed on your m
 2. **Run the Container**:
    Pass environment variables and mount a Docker volume at `/app/data` to persist audio recordings and temporary chunks.
 
-   - **Connecting to local PostgreSQL and Ollama on Mac/Host**:
+   - **Connecting to local PostgreSQL on Mac/Host**:
      Use `host.docker.internal` so the container can reach services running on your host machine:
      ```bash
      docker run -p 8000:8000 \
        -e POSTGRES_HOST=host.docker.internal \
-       -e OLLAMA_URL=http://host.docker.internal:11434 \
        --env-file .env \
        -v note_taker_data:/app/data \
        note-taker-backend
      ```
+     *(Note: If using Ollama with Docker on Mac, configure the Ollama Server URL as `http://host.docker.internal:11434` directly in the web Settings page!)*
 
    - **Custom Host Port (e.g. `8084`)**:
      ```bash
      docker run -p 8084:8000 \
        -e POSTGRES_HOST=host.docker.internal \
-       -e OLLAMA_URL=http://host.docker.internal:11434 \
        --env-file .env \
        -v note_taker_data:/app/data \
        note-taker-backend
@@ -97,17 +97,24 @@ Before setting up the project, ensure you have the following installed on your m
 
 ---
 
-## 🧠 Ollama Setup
+## 🧠 AI Provider Setup (Ollama & Google Gemini)
 
-The backend connects to Ollama for generating summaries and action items.
+The application supports both local Ollama models and Google Gemini cloud models for generating titles, meeting summaries, SOAP clinical notes, and speaker diarization names. You can choose the active provider in the **Settings** page.
 
-1. **Start Ollama**:
-   Ensure the Ollama application is running.
-2. **Pull the Model**:
-   By default, the backend expects the model `gemma4:12b-mlx` (defined in settings). If you wish to use a different model, pull it first:
+### Option 1: Ollama (Local)
+1. **Start Ollama**: Ensure the Ollama application is running.
+2. **Pull the Model**: By default, the local model is set to `gemma4:12b-mlx`. Pull it using:
    ```bash
    ollama pull gemma4:12b-mlx
    ```
    > [!NOTE]
-   > You can modify the target Ollama model dynamically via the Settings page in the UI or update it in the database.
+   > You can select any installed Ollama model dynamically via the Settings page dropdown in the UI.
+
+### Option 2: Google Gemini (Cloud)
+1. **Get an API Key**: Obtain a Gemini API key from [Google AI Studio](https://aistudio.google.com/).
+2. **Configure in Settings**:
+   - Go to **System Settings** in the web interface.
+   - Set **AI Provider** to **Google Gemini**.
+   - Choose your preferred Gemini model (`gemini-4-argon`, `gemini-3.8-flash`, or `gemini-3.5-flash-lite`).
+   - Enter your **Gemini API Key** and click **Save Settings** (or supply `GEMINI_API_KEY` in `backend/.env`).
 

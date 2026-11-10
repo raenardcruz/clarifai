@@ -13,7 +13,12 @@ type SettingsUpdate struct {
 	ExecutiveSummaryPrompt string  `json:"executive_summary_prompt" binding:"required"`
 	MedicalSummaryPrompt   string  `json:"medical_summary_prompt"`
 	SpeechmaticsAPIKey     *string `json:"speechmatics_api_key,omitempty"`
+	OllamaURL              string  `json:"ollama_url"`
 	OllamaModel            string  `json:"ollama_model"`
+	AIProvider             string  `json:"ai_provider"`
+	GeminiModel            string  `json:"gemini_model"`
+	GeminiAPIKey           *string `json:"gemini_api_key,omitempty"`
+	GeminiAPIBase          string  `json:"gemini_api_base,omitempty"`
 }
 
 type SettingsOut struct {
@@ -21,7 +26,12 @@ type SettingsOut struct {
 	ExecutiveSummaryPrompt string  `json:"executive_summary_prompt"`
 	MedicalSummaryPrompt   string  `json:"medical_summary_prompt"`
 	SpeechmaticsAPIKey     *string `json:"speechmatics_api_key,omitempty"`
+	OllamaURL              string  `json:"ollama_url"`
 	OllamaModel            string  `json:"ollama_model"`
+	AIProvider             string  `json:"ai_provider"`
+	GeminiModel            string  `json:"gemini_model"`
+	GeminiAPIKey           *string `json:"gemini_api_key,omitempty"`
+	GeminiAPIBase          string  `json:"gemini_api_base,omitempty"`
 }
 
 func SetupSettingsRoutes(router *gin.RouterGroup) {
@@ -31,22 +41,55 @@ func SetupSettingsRoutes(router *gin.RouterGroup) {
 		var settings models.Settings
 		if err := db.First(&settings).Error; err != nil {
 			// Create default settings if not exists
-			settings = models.Settings{}
+			settings = models.Settings{
+				AIProvider:  "ollama",
+				OllamaURL:   "http://localhost:11434",
+				OllamaModel: "gemma4:12b-mlx",
+				GeminiModel: "gemini-3.8-flash",
+			}
 			db.Create(&settings)
 		}
 
-		var maskedKey *string
+		var maskedSpeechmaticsKey *string
 		if settings.SpeechmaticsAPIKey != nil && *settings.SpeechmaticsAPIKey != "" {
 			masked := "••••••••"
-			maskedKey = &masked
+			maskedSpeechmaticsKey = &masked
+		}
+
+		var maskedGeminiKey *string
+		if settings.GeminiAPIKey != nil && *settings.GeminiAPIKey != "" {
+			masked := "••••••••"
+			maskedGeminiKey = &masked
+		}
+
+		provider := settings.AIProvider
+		if provider == "" {
+			provider = "ollama"
+		}
+		geminiModel := settings.GeminiModel
+		if geminiModel == "" {
+			geminiModel = "gemini-3.8-flash"
+		}
+		ollamaModel := settings.OllamaModel
+		if ollamaModel == "" {
+			ollamaModel = "gemma4:12b-mlx"
+		}
+		ollamaURL := settings.OllamaURL
+		if ollamaURL == "" {
+			ollamaURL = "http://localhost:11434"
 		}
 
 		c.JSON(http.StatusOK, SettingsOut{
 			AISummarizationMode:    settings.AISummarizationMode,
 			ExecutiveSummaryPrompt: settings.ExecutiveSummaryPrompt,
 			MedicalSummaryPrompt:   settings.MedicalSummaryPrompt,
-			SpeechmaticsAPIKey:     maskedKey,
-			OllamaModel:            settings.OllamaModel,
+			SpeechmaticsAPIKey:     maskedSpeechmaticsKey,
+			OllamaURL:              ollamaURL,
+			OllamaModel:            ollamaModel,
+			AIProvider:             provider,
+			GeminiModel:            geminiModel,
+			GeminiAPIKey:           maskedGeminiKey,
+			GeminiAPIBase:          settings.GeminiAPIBase,
 		})
 	})
 
@@ -61,6 +104,11 @@ func SetupSettingsRoutes(router *gin.RouterGroup) {
 		c.JSON(http.StatusOK, modelsList)
 	})
 
+	// GET route to retrieve available Gemini models
+	router.GET("/gemini-models", AuthMiddleware(), RequireApprovedUser(), func(c *gin.Context) {
+		c.JSON(http.StatusOK, services.GetGeminiModels())
+	})
+
 	// PUT route requires Admin privileges
 	router.PUT("", AuthMiddleware(), RequireAdminUser(), func(c *gin.Context) {
 		var input SettingsUpdate
@@ -72,7 +120,12 @@ func SetupSettingsRoutes(router *gin.RouterGroup) {
 		db := models.GetDB()
 		var settings models.Settings
 		if err := db.First(&settings).Error; err != nil {
-			settings = models.Settings{}
+			settings = models.Settings{
+				AIProvider:  "ollama",
+				OllamaURL:   "http://localhost:11434",
+				OllamaModel: "gemma4:12b-mlx",
+				GeminiModel: "gemini-3.8-flash",
+			}
 			db.Create(&settings)
 		}
 
@@ -81,29 +134,82 @@ func SetupSettingsRoutes(router *gin.RouterGroup) {
 		if input.MedicalSummaryPrompt != "" {
 			settings.MedicalSummaryPrompt = input.MedicalSummaryPrompt
 		}
+		if input.OllamaURL != "" {
+			settings.OllamaURL = input.OllamaURL
+		}
 		if input.OllamaModel != "" {
 			settings.OllamaModel = input.OllamaModel
 		}
+		if input.AIProvider != "" {
+			settings.AIProvider = input.AIProvider
+		}
+		if input.GeminiModel != "" {
+			settings.GeminiModel = input.GeminiModel
+		}
+		settings.GeminiAPIBase = input.GeminiAPIBase
 
-		if input.SpeechmaticsAPIKey != nil && *input.SpeechmaticsAPIKey != "••••••••" {
-			settings.SpeechmaticsAPIKey = input.SpeechmaticsAPIKey
+		if input.SpeechmaticsAPIKey != nil {
+			if *input.SpeechmaticsAPIKey != "••••••••" {
+				if *input.SpeechmaticsAPIKey == "" {
+					settings.SpeechmaticsAPIKey = nil
+				} else {
+					settings.SpeechmaticsAPIKey = input.SpeechmaticsAPIKey
+				}
+			}
+		}
+
+		if input.GeminiAPIKey != nil {
+			if *input.GeminiAPIKey != "••••••••" {
+				if *input.GeminiAPIKey == "" {
+					settings.GeminiAPIKey = nil
+				} else {
+					settings.GeminiAPIKey = input.GeminiAPIKey
+				}
+			}
 		}
 
 		db.Save(&settings)
 
-		var maskedKey *string
+		var maskedSpeechmaticsKey *string
 		if settings.SpeechmaticsAPIKey != nil && *settings.SpeechmaticsAPIKey != "" {
 			masked := "••••••••"
-			maskedKey = &masked
+			maskedSpeechmaticsKey = &masked
+		}
+
+		var maskedGeminiKey *string
+		if settings.GeminiAPIKey != nil && *settings.GeminiAPIKey != "" {
+			masked := "••••••••"
+			maskedGeminiKey = &masked
+		}
+
+		provider := settings.AIProvider
+		if provider == "" {
+			provider = "ollama"
+		}
+		geminiModel := settings.GeminiModel
+		if geminiModel == "" {
+			geminiModel = "gemini-3.8-flash"
+		}
+		ollamaModel := settings.OllamaModel
+		if ollamaModel == "" {
+			ollamaModel = "gemma4:12b-mlx"
+		}
+		ollamaURL := settings.OllamaURL
+		if ollamaURL == "" {
+			ollamaURL = "http://localhost:11434"
 		}
 
 		c.JSON(http.StatusOK, SettingsOut{
 			AISummarizationMode:    settings.AISummarizationMode,
 			ExecutiveSummaryPrompt: settings.ExecutiveSummaryPrompt,
 			MedicalSummaryPrompt:   settings.MedicalSummaryPrompt,
-			SpeechmaticsAPIKey:     maskedKey,
-			OllamaModel:            settings.OllamaModel,
+			SpeechmaticsAPIKey:     maskedSpeechmaticsKey,
+			OllamaURL:              ollamaURL,
+			OllamaModel:            ollamaModel,
+			AIProvider:             provider,
+			GeminiModel:            geminiModel,
+			GeminiAPIKey:           maskedGeminiKey,
+			GeminiAPIBase:          settings.GeminiAPIBase,
 		})
 	})
-
 }
