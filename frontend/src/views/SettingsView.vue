@@ -61,8 +61,71 @@
 
             <div class="setting-divider"></div>
 
-            <!-- Ollama Model Row -->
+            <!-- AI Provider Row -->
             <div class="setting-item">
+              <div class="setting-info">
+                <span class="setting-name">AI Provider</span>
+                <span class="setting-hint">Select whether to use local Ollama models or Google Gemini cloud models</span>
+              </div>
+              
+              <div class="mode-selection-grid">
+                <label 
+                  class="apple-choice-card" 
+                  :class="{ active: settings.ai_provider === 'ollama' }"
+                >
+                  <input type="radio" value="ollama" v-model="settings.ai_provider" class="hidden-radio" />
+                  <div class="choice-content">
+                    <div class="choice-title-row">
+                      <strong>Ollama</strong>
+                      <span class="choice-check" v-if="settings.ai_provider === 'ollama'">✓</span>
+                    </div>
+                    <span class="choice-sub">Run local models on your machine without cloud latency</span>
+                  </div>
+                </label>
+
+                <label 
+                  class="apple-choice-card" 
+                  :class="{ active: settings.ai_provider === 'gemini' }"
+                >
+                  <input type="radio" value="gemini" v-model="settings.ai_provider" class="hidden-radio" />
+                  <div class="choice-content">
+                    <div class="choice-title-row">
+                      <strong>Google Gemini</strong>
+                      <span class="choice-check" v-if="settings.ai_provider === 'gemini'">✓</span>
+                    </div>
+                    <span class="choice-sub">Cloud intelligence via Google's Gemini API</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-divider"></div>
+
+            <!-- Ollama Host URL Row -->
+            <div class="setting-item" v-if="settings.ai_provider === 'ollama'">
+              <div class="setting-info">
+                <span class="setting-name">Ollama Server URL</span>
+                <span class="setting-hint">Host URL for the local Ollama daemon (e.g. http://localhost:11434 or http://host.docker.internal:11434)</span>
+              </div>
+              <div class="setting-control server-input-row">
+                <input 
+                  type="text" 
+                  v-model="settings.ollama_url" 
+                  class="apple-input-text font-mono"
+                  placeholder="http://localhost:11434"
+                />
+                <button type="button" class="apple-btn-secondary" @click="fetchModels" :disabled="isFetchingModels" title="Reload available models from Ollama server">
+                  <RefreshCw class="animate-spin" size="14" v-if="isFetchingModels" />
+                  <RefreshCw size="14" v-else />
+                  <span>{{ isFetchingModels ? 'Loading...' : 'Refresh' }}</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="setting-divider" v-if="settings.ai_provider === 'ollama'"></div>
+
+            <!-- Ollama Model Row -->
+            <div class="setting-item" v-if="settings.ai_provider === 'ollama'">
               <div class="setting-info">
                 <span class="setting-name">Ollama LLM Model</span>
                 <span class="setting-hint">Local model used for generating executive summaries and titles</span>
@@ -71,8 +134,65 @@
                 <Select 
                   v-model="settings.ollama_model" 
                   :options="availableModels" 
-                  placeholder="Select a Model"
+                  placeholder="Select an Ollama Model"
                   class="apple-select-input"
+                />
+              </div>
+            </div>
+
+            <!-- Gemini Model Row -->
+            <div class="setting-item" v-if="settings.ai_provider === 'gemini'">
+              <div class="setting-info">
+                <span class="setting-name">Gemini LLM Model</span>
+                <span class="setting-hint">Select a Gemini model for generating executive summaries and titles</span>
+              </div>
+              <div class="setting-control">
+                <Select 
+                  v-model="settings.gemini_model" 
+                  :options="geminiModels" 
+                  placeholder="Select a Gemini Model"
+                  class="apple-select-input"
+                />
+              </div>
+            </div>
+
+            <div class="setting-divider" v-if="settings.ai_provider === 'gemini'"></div>
+
+            <!-- Gemini API Key Row -->
+            <div class="setting-item flex-col-item" v-if="settings.ai_provider === 'gemini'">
+              <div class="setting-info mb-2">
+                <span class="setting-name">Gemini API Key</span>
+                <span class="setting-hint">Required to authenticate requests with Google Gemini API</span>
+              </div>
+
+              <div class="api-key-input-wrapper">
+                <input 
+                  :type="showGeminiKey ? 'text' : 'password'"
+                  v-model="settings.gemini_api_key" 
+                  class="apple-input-text font-mono"
+                  placeholder="Enter Gemini API Key"
+                />
+                <button type="button" class="eye-toggle-btn" @click="showGeminiKey = !showGeminiKey" title="Toggle visibility">
+                  <EyeOff size="16" v-if="showGeminiKey" />
+                  <Eye size="16" v-else />
+                </button>
+              </div>
+            </div>
+
+            <div class="setting-divider" v-if="settings.ai_provider === 'gemini'"></div>
+
+            <!-- Gemini Custom Base URL Row -->
+            <div class="setting-item" v-if="settings.ai_provider === 'gemini'">
+              <div class="setting-info">
+                <span class="setting-name">Gemini Endpoint (Optional)</span>
+                <span class="setting-hint">Custom proxy or base endpoint (defaults to official Google API URL)</span>
+              </div>
+              <div class="setting-control">
+                <input 
+                  type="text" 
+                  v-model="settings.gemini_api_base" 
+                  class="apple-input-text font-mono"
+                  placeholder="https://generativelanguage.googleapis.com/v1beta"
                 />
               </div>
             </div>
@@ -83,7 +203,7 @@
             <div class="setting-item flex-col-item">
               <div class="setting-info mb-2">
                 <span class="setting-name">Executive Summary System Prompt</span>
-                <span class="setting-hint">Core instructions passed to the local LLM to shape the summary tone and structure</span>
+                <span class="setting-hint">Core instructions passed to the AI model to shape the summary tone and structure</span>
               </div>
               <div class="setting-control w-full">
                 <textarea 
@@ -101,7 +221,7 @@
             <div class="setting-item flex-col-item">
               <div class="setting-info mb-2">
                 <span class="setting-name">Medical Conversation SOAP System Prompt</span>
-                <span class="setting-hint">Specialized clinical instructions used by the local LLM for recordings flagged as medical encounters</span>
+                <span class="setting-hint">Specialized clinical instructions used by the AI model for recordings flagged as medical encounters</span>
               </div>
               <div class="setting-control w-full">
                 <textarea 
@@ -315,15 +435,23 @@ const handleClearCache = async () => {
 
 const settings = ref({
   ai_summarization_mode: 'auto',
+  ai_provider: 'ollama',
+  ollama_url: 'http://localhost:11434',
+  ollama_model: 'gemma4:12b-mlx',
+  gemini_model: 'gemini-3.8-flash',
+  gemini_api_key: '',
+  gemini_api_base: '',
   executive_summary_prompt: 'Analyze the following transcript and write a detailed, cohesive executive summary in a narrative paragraph format. Synthesize the meeting\'s core purpose, main arguments, and final outcomes into smooth, professional prose, explicitly attributing key ideas, decisions, and viewpoints to specific speakers by name (or speaker identifier) directly within the flow of the text. Ensure the summary is comprehensive and captures concrete details, specific project names, and actionable next steps, but deliver it entirely as a sequence of well-structured paragraphs without using any bullet points, lists, or tables. Here is the transcript: [PASTE TRANSCRIPT HERE]',
   medical_summary_prompt: '',
-  speechmatics_api_key: '',
-  ollama_model: 'gemma4:12b-mlx'
+  speechmatics_api_key: ''
 })
 
 const availableModels = ref([])
+const geminiModels = ref(['gemini-4-argon', 'gemini-3.8-flash', 'gemini-3.5-flash-lite'])
 const loading = ref(false)
+const isFetchingModels = ref(false)
 const showKey = ref(false)
+const showGeminiKey = ref(false)
 
 const testServerConnection = async () => {
   isTestingServer.value = true
@@ -343,12 +471,23 @@ const testServerConnection = async () => {
 }
 
 const fetchModels = async () => {
+  isFetchingModels.value = true
   try {
     const res = await axios.get('/api/settings/ollama-models')
     availableModels.value = res.data
   } catch (e) {
     console.error("Failed to load Ollama models", e)
     availableModels.value = ['gemma4:12b-mlx']
+  } finally {
+    isFetchingModels.value = false
+  }
+
+  try {
+    const resGemini = await axios.get('/api/settings/gemini-models')
+    geminiModels.value = resGemini.data
+  } catch (e) {
+    console.error("Failed to load Gemini models", e)
+    geminiModels.value = ['gemini-4-argon', 'gemini-3.8-flash', 'gemini-3.5-flash-lite']
   }
 }
 
@@ -356,7 +495,16 @@ const fetchSettings = async () => {
   serverUrl.value = getApiBaseUrl()
   try {
     const res = await axios.get('/api/settings')
-    settings.value = res.data
+    settings.value = {
+      ...settings.value,
+      ...res.data,
+      ai_provider: res.data.ai_provider || 'ollama',
+      ollama_url: res.data.ollama_url || 'http://localhost:11434',
+      ollama_model: res.data.ollama_model || 'gemma4:12b-mlx',
+      gemini_model: res.data.gemini_model || 'gemini-3.8-flash',
+      gemini_api_key: res.data.gemini_api_key || '',
+      gemini_api_base: res.data.gemini_api_base || ''
+    }
   } catch (e) {
     console.error("Failed to load settings", e)
   }

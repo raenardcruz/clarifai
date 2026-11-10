@@ -61,11 +61,16 @@ Ensure strict clinical accuracy, capturing concrete details without omitting med
 
 type Settings struct {
 	ID                     uint    `gorm:"primaryKey" json:"id"`
-	AISummarizationMode    string  `gorm:"default:auto" json:"ai_summarization_mode"`
-	ExecutiveSummaryPrompt string  `gorm:"type:text;default:'Analyze the following transcript and write a detailed, cohesive executive summary in a narrative paragraph format. Synthesize the meeting''s core purpose, main arguments, and final outcomes into smooth, professional prose, explicitly attributing key ideas, decisions, and viewpoints to specific speakers by name (or speaker identifier) directly within the flow of the text. Ensure the summary is comprehensive and captures concrete details, specific project names, and actionable next steps, but deliver it entirely as a sequence of well-structured paragraphs without using any bullet points, lists, or tables.'"`
-	MedicalSummaryPrompt   string  `gorm:"type:text" json:"medical_summary_prompt"`
-	SpeechmaticsAPIKey     *string `json:"speechmatics_api_key,omitempty"`
-	OllamaModel            string  `gorm:"default:'gemma4:12b-mlx'" json:"ollama_model"`
+	AISummarizationMode    string  `gorm:"column:ai_summarization_mode;default:auto" json:"ai_summarization_mode"`
+	ExecutiveSummaryPrompt string  `gorm:"column:executive_summary_prompt;type:text;default:'Analyze the following transcript and write a detailed, cohesive executive summary in a narrative paragraph format. Synthesize the meeting''s core purpose, main arguments, and final outcomes into smooth, professional prose, explicitly attributing key ideas, decisions, and viewpoints to specific speakers by name (or speaker identifier) directly within the flow of the text. Ensure the summary is comprehensive and captures concrete details, specific project names, and actionable next steps, but deliver it entirely as a sequence of well-structured paragraphs without using any bullet points, lists, or tables.'"`
+	MedicalSummaryPrompt   string  `gorm:"column:medical_summary_prompt;type:text" json:"medical_summary_prompt"`
+	SpeechmaticsAPIKey     *string `gorm:"column:speechmatics_api_key" json:"speechmatics_api_key,omitempty"`
+	OllamaURL              string  `gorm:"column:ollama_url;default:'http://localhost:11434'" json:"ollama_url"`
+	OllamaModel            string  `gorm:"column:ollama_model;default:'gemma4:12b-mlx'" json:"ollama_model"`
+	AIProvider             string  `gorm:"column:ai_provider;default:'ollama'" json:"ai_provider"`
+	GeminiModel            string  `gorm:"column:gemini_model;default:'gemini-3.8-flash'" json:"gemini_model"`
+	GeminiAPIKey           *string `gorm:"column:gemini_api_key" json:"gemini_api_key,omitempty"`
+	GeminiAPIBase          string  `gorm:"column:gemini_api_base" json:"gemini_api_base,omitempty"`
 }
 
 

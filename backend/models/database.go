@@ -99,10 +99,17 @@ func InitDB() {
 
 	// Auto Migration
 	log.Println("Running AutoMigration...")
+
+	// Migrate legacy GORM column 'a_iprovider' to 'ai_provider' if it was created
+	_ = DB.Exec("DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='settings' AND column_name='a_iprovider') AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='settings' AND column_name='ai_provider') THEN ALTER TABLE settings RENAME COLUMN a_iprovider TO ai_provider; END IF; END $$;").Error
+
 	err = DB.AutoMigrate(&User{}, &Recording{}, &TranscriptSegment{}, &Settings{})
 	if err != nil {
 		log.Fatalf("Failed to run AutoMigration: %v", err)
 	}
+
+	// In case both existed, migrate data and drop legacy column
+	_ = DB.Exec("DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='settings' AND column_name='a_iprovider') THEN UPDATE settings SET ai_provider = a_iprovider WHERE (ai_provider IS NULL OR ai_provider = '') AND a_iprovider IS NOT NULL; ALTER TABLE settings DROP COLUMN a_iprovider; END IF; END $$;").Error
 
 	// Seeding
 	SeedDB()
@@ -138,6 +145,10 @@ func SeedDB() {
 		log.Println("Creating default settings...")
 		defaultSettings := Settings{
 			MedicalSummaryPrompt: DefaultMedicalSummaryPrompt,
+			AIProvider:           "ollama",
+			OllamaURL:            "http://localhost:11434",
+			OllamaModel:          "gemma4:12b-mlx",
+			GeminiModel:          "gemini-3.8-flash",
 		}
 		if err := DB.Create(&defaultSettings).Error; err != nil {
 
@@ -146,8 +157,11 @@ func SeedDB() {
 			log.Println("Default settings created.")
 		}
 	} else {
-		// Update empty/null ollama_model in existing settings
+		// Update empty/null fields in existing settings
+		DB.Model(&Settings{}).Where("ollama_url = ? OR ollama_url IS NULL", "").Update("ollama_url", "http://localhost:11434")
 		DB.Model(&Settings{}).Where("ollama_model = ? OR ollama_model IS NULL", "").Update("ollama_model", "gemma4:12b-mlx")
+		DB.Model(&Settings{}).Where("ai_provider = ? OR ai_provider IS NULL", "").Update("ai_provider", "ollama")
+		DB.Model(&Settings{}).Where("gemini_model = ? OR gemini_model IS NULL", "").Update("gemini_model", "gemini-3.8-flash")
 		DB.Model(&Settings{}).Where("medical_summary_prompt = ? OR medical_summary_prompt IS NULL", "").Update("medical_summary_prompt", DefaultMedicalSummaryPrompt)
 	}
 }

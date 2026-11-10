@@ -58,8 +58,10 @@ func ProcessSpeechmaticsJob(jobID string, filePath string) {
 	db.Save(&recording)
 
 	apiKey := ""
-	if settings.SpeechmaticsAPIKey != nil {
+	if settings.SpeechmaticsAPIKey != nil && *settings.SpeechmaticsAPIKey != "" {
 		apiKey = *settings.SpeechmaticsAPIKey
+	} else {
+		apiKey = os.Getenv("SPEECHMATICS_API_KEY")
 	}
 
 	if apiKey != "" {

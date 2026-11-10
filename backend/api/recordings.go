@@ -65,6 +65,13 @@ type RecordingOut struct {
 	IsMedical bool     `json:"is_medical"`
 }
 
+func getSpeechmaticsKey(settings *models.Settings) string {
+	if settings != nil && settings.SpeechmaticsAPIKey != nil && *settings.SpeechmaticsAPIKey != "" {
+		return *settings.SpeechmaticsAPIKey
+	}
+	return os.Getenv("SPEECHMATICS_API_KEY")
+}
+
 func SetupRecordingsRoutes(router *gin.RouterGroup) {
 	// Public route (sharing) does not require auth
 	router.GET("/share/:recording_id", getSharedRecording)
@@ -109,7 +116,7 @@ func uploadAudio(c *gin.Context) {
 	var settings models.Settings
 	db.First(&settings)
 
-	if settings.SpeechmaticsAPIKey == nil || *settings.SpeechmaticsAPIKey == "" {
+	if getSpeechmaticsKey(&settings) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "Speechmatics API key is not configured. Please set it in Settings."})
 		return
 	}
@@ -175,7 +182,7 @@ func initChunkedUpload(c *gin.Context) {
 	var settings models.Settings
 	db.First(&settings)
 
-	if settings.SpeechmaticsAPIKey == nil || *settings.SpeechmaticsAPIKey == "" {
+	if getSpeechmaticsKey(&settings) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "Speechmatics API key is not configured. Please set it in Settings."})
 		return
 	}
@@ -449,10 +456,7 @@ func getSpeechmaticsUsage(c *gin.Context) {
 	var settings models.Settings
 	db.First(&settings)
 
-	apiKey := ""
-	if settings.SpeechmaticsAPIKey != nil {
-		apiKey = *settings.SpeechmaticsAPIKey
-	}
+	apiKey := getSpeechmaticsKey(&settings)
 
 	limitHours := currentUser.TranscriptionLimitHours
 	limitSeconds := limitHours * 3600.0
