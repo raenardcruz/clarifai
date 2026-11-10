@@ -6,8 +6,27 @@ import (
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"sync"
 	"testing"
+
+	"gorm.io/gorm/schema"
+	"note-taker/backend/models"
 )
+
+func TestSettingsSchema(t *testing.T) {
+	s, err := schema.Parse(&models.Settings{}, &sync.Map{}, schema.NamingStrategy{})
+	if err != nil {
+		t.Fatalf("failed to parse schema: %v", err)
+	}
+	f := s.FieldsByName["AIProvider"]
+	if f == nil {
+		t.Fatalf("field AIProvider not found")
+	}
+	t.Logf("AIProvider DB Name: %s", f.DBName)
+	if f.DBName != "ai_provider" {
+		t.Errorf("expected DBName 'ai_provider', got '%s'", f.DBName)
+	}
+}
 
 func TestGetGeminiModels(t *testing.T) {
 	expected := []string{

@@ -99,10 +99,17 @@ func InitDB() {
 
 	// Auto Migration
 	log.Println("Running AutoMigration...")
+
+	// Migrate legacy GORM column 'a_iprovider' to 'ai_provider' if it was created
+	_ = DB.Exec("DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='settings' AND column_name='a_iprovider') AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='settings' AND column_name='ai_provider') THEN ALTER TABLE settings RENAME COLUMN a_iprovider TO ai_provider; END IF; END $$;").Error
+
 	err = DB.AutoMigrate(&User{}, &Recording{}, &TranscriptSegment{}, &Settings{})
 	if err != nil {
 		log.Fatalf("Failed to run AutoMigration: %v", err)
 	}
+
+	// In case both existed, migrate data and drop legacy column
+	_ = DB.Exec("DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='settings' AND column_name='a_iprovider') THEN UPDATE settings SET ai_provider = a_iprovider WHERE (ai_provider IS NULL OR ai_provider = '') AND a_iprovider IS NOT NULL; ALTER TABLE settings DROP COLUMN a_iprovider; END IF; END $$;").Error
 
 	// Seeding
 	SeedDB()
