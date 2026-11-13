@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- =========================================================================
+         LLM INSTRUCTIONS: AI NOTE-TAKER HTML SUMMARY TEMPLATE
+         =========================================================================
+         PURPOSE:
+         Generate a standalone, self-contained HTML summary from an audio/video
+         transcript or meeting notes. Preserve chronological order, conceptual
+         depth, concrete examples, metrics, comparisons, Q&A, and action items.
+
+         STRICT GENERATION RULES:
+         1. OUTPUT FORMAT: Return valid HTML5 starting with <!DOCTYPE html>. Keep
+            all CSS inside <style> and all charts in pure HTML/CSS or inline SVG.
+            Do NOT add external JS chart libraries.
+         2. PLACEHOLDER REPLACEMENT: Replace every [bracketed] placeholder and
+            sample value with actual content from the source transcript. Never
+            leave dummy text or lorem ipsum in the final output.
+         3. CONDITIONAL SECTIONS (OMIT IF EMPTY):
+            - If a section has no supporting data in the transcript (e.g., no
+              numerical benchmarks for Section 03, no Q&A in Section 05, or no
+              code snippets), DELETE that entire <section> or component block
+              cleanly rather than inventing data or leaving empty placeholders.
+            - Renumber remaining <span class="sec-num">01</span> badges
+              sequentially (01, 02, 03...) if any section is removed.
+         4. ESCAPING: Escape HTML special characters (&, <, >) inside prose and
+            <code> blocks so snippets render safely.
+         ========================================================================= -->
+    <title>[Session Title] — Session Summary</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,500;0,6..72,600;1,6..72,400&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-canvas: #f4f5f7;
+            --bg-surface: #ffffff;
+            --bg-subtle: #f8fafc;
+            --bg-muted: #f1f5f9;
+            --text-primary: #0f172a;
+            --text-secondary: #334155;
+            --text-tertiary: #64748b;
+            --accent: #2563eb;
+            --accent-deep: #1d4ed8;
+            --accent-soft: #eff6ff;
+            --accent-border: #bfdbfe;
+            --border-light: #e2e8f0;
+            --border-medium: #cbd5e1;
+            --emerald-bg: #ecfdf5;
+            --emerald-text: #065f46;
+            --emerald-border: #a7f3d0;
+            --amber-bg: #fffbeb;
+            --amber-text: #92400e;
+            --amber-border: #fde68a;
+            --rose-bg: #fff1f2;
+            --rose-text: #9f1239;
+            --rose-border: #fecdd3;
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            --font-serif: 'Newsreader', Georgia, Cambria, "Times New Roman", serif;
+            --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            font-size: 16px;
+            line-height: 1.7;
+            color: var(--text-secondary);
+            background-color: transparent;
+            margin: 0;
+            padding: 0;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+        }
+
+        .document-sheet {
+            width: 100%;
+            margin: 0;
+            background-color: transparent;
+            padding: 0.25rem 0;
+            border-radius: 0;
+            border: none;
+            box-shadow: none;
+        }
+
+        /* Header & Editorial Title Block */
+        header {
+            padding-bottom: 2rem;
+            margin-bottom: 2.5rem;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.09em;
+            color: var(--accent);
+            background-color: var(--accent-soft);
+            border: 1px solid var(--accent-border);
+            padding: 0.28rem 0.75rem;
+            border-radius: 9999px;
+            margin-bottom: 1rem;
+        }
+
+        .eyebrow::before {
+            content: "";
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: var(--accent);
+        }
+
+        h1 {
+            font-family: var(--font-serif);
+            font-weight: 600;
+            font-size: 2.45rem;
+            line-height: 1.15;
+            letter-spacing: -0.025em;
+            color: var(--text-primary);
+            margin: 0 0 1.25rem 0;
+        }
+
+        .meta-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.65rem 1.25rem;
+            font-size: 0.85rem;
+            color: var(--text-tertiary);
+        }
+
+        .meta-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .meta-item strong {
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        .meta-sep {
+            color: var(--border-medium);
+            user-select: none;
+        }
+
+        /* Section Typography */
+        section {
+            margin-top: 2.75rem;
+        }
+
+        section:first-of-type {
+            margin-top: 0;
+        }
+
+        h2 {
+            display: flex;
+            align-items: baseline;
+            gap: 0.65rem;
+            font-family: var(--font-sans);
+            font-size: 1.25rem;
+            font-weight: 700;
+            letter-spacing: -0.015em;
+            color: var(--text-primary);
+            margin: 0 0 1rem 0;
+            padding-bottom: 0.55rem;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .sec-num {
+            font-family: var(--font-mono);
+            font-size: 0.82rem;
+            font-weight: 500;
+            color: var(--accent);
+            background-color: var(--accent-soft);
+            padding: 0.1rem 0.45rem;
+            border-radius: 5px;
+        }
+
+        h3 {
+            font-size: 1.06rem;
+            font-weight: 650;
+            letter-spacing: -0.01em;
+            color: var(--text-primary);
+            margin: 1.75rem 0 0.5rem 0;
+        }
+
+        h4 {
+            font-size: 0.78rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: var(--text-tertiary);
+            margin: 1.25rem 0 0.5rem 0;
+        }
+
+        p {
+            margin: 0 0 1.1rem 0;
+            max-width: 68ch;
+        }
+
+        .lead {
+            font-size: 1.05rem;
+            line-height: 1.72;
+            color: var(--text-secondary);
+        }
+
+        ul, ol {
+            margin: 0 0 1.25rem 0;
+            padding-left: 1.35rem;
+            max-width: 66ch;
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+            padding-left: 0.25rem;
+        }
+
+        li::marker {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        /* KPI Cards */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin: 1.5rem 0 0.5rem 0;
+        }
+
+        .kpi-card {
+            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+            border: 1px solid var(--border-light);
+            border-radius: 10px;
+            padding: 1.1rem 1.25rem;
+        }
+
+        .kpi-label {
+            font-size: 0.74rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-tertiary);
+        }
+
+        .kpi-value {
+            font-size: 1.6rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: var(--text-primary);
+            font-variant-numeric: tabular-nums;
+            margin: 0.25rem 0 0.2rem 0;
+        }
+
+        .kpi-delta {
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: #059669;
+        }
+
+        /* Callouts, Blockquotes & Code */
+        .callout {
+            background-color: var(--accent-soft);
+            border: 1px solid var(--accent-border);
+            border-left: 4px solid var(--accent);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin: 1.35rem 0;
+            font-size: 0.94rem;
+            color: #1e3a8a;
+        }
+
+        .callout strong {
+            color: #172554;
+        }
+
+        blockquote {
+            margin: 1.5rem 0;
+            padding: 0.85rem 1.35rem;
+            border-left: 3px solid var(--border-medium);
+            background-color: var(--bg-subtle);
+            border-radius: 0 8px 8px 0;
+            font-family: var(--font-serif);
+            font-style: italic;
+            font-size: 1.08rem;
+            line-height: 1.6;
+            color: var(--text-primary);
+        }
+
+        pre {
+            background-color: #0f172a;
+            color: #e2e8f0;
+            padding: 1.15rem 1.35rem;
+            border-radius: 10px;
+            overflow-x: auto;
+            font-family: var(--font-mono);
+            font-size: 0.83rem;
+            line-height: 1.6;
+            margin: 1.25rem 0;
+            border: 1px solid #1e293b;
+        }
+
+        .code-comment { color: #64748b; }
+        .code-kw { color: #93c5fd; }
+        .code-type { color: #5eead4; }
+
+        /* Charts */
+        .chart-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.25rem;
+            margin: 1.35rem 0;
+        }
+
+        .chart-card {
+            border: 1px solid var(--border-light);
+            border-radius: 10px;
+            padding: 1.35rem;
+            background-color: transparent;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 1.1rem;
+        }
+
+        .chart-title {
+            font-size: 0.92rem;
+            font-weight: 650;
+            color: var(--text-primary);
+        }
+
+        .chart-unit {
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            font-family: var(--font-mono);
+        }
+
+        .bar-item {
+            margin-bottom: 0.9rem;
+        }
+
+        .bar-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .bar-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.83rem;
+            margin-bottom: 0.3rem;
+            color: var(--text-secondary);
+        }
+
+        .bar-val {
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            color: var(--text-tertiary);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .bar-track {
+            width: 100%;
+            height: 8px;
+            background-color: var(--bg-muted);
+            border-radius: 9999px;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            border-radius: 9999px;
+        }
+
+        /* Tables */
+        .table-card {
+            border: 1px solid var(--border-light);
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 1rem 0 1.75rem 0;
+        }
+
+        .table-scroll {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.89rem;
+            text-align: left;
+            font-variant-numeric: tabular-nums;
+        }
+
+        thead th {
+            background-color: var(--bg-subtle);
+            color: var(--text-tertiary);
+            font-size: 0.74rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        tbody td {
+            padding: 0.8rem 1rem;
+            border-bottom: 1px solid var(--border-light);
+            color: var(--text-secondary);
+        }
+
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        tbody tr:hover {
+            background-color: #f8fafc;
+        }
+
+        td strong {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .mono-cell {
+            font-family: var(--font-mono);
+            font-size: 0.82rem;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.18rem 0.65rem;
+            border-radius: 9999px;
+            font-size: 0.76rem;
+            font-weight: 600;
+            line-height: 1.4;
+        }
+
+        .pill::before {
+            content: "";
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background-color: currentColor;
+        }
+
+        .pill-done {
+            background-color: var(--emerald-bg);
+            color: var(--emerald-text);
+            border: 1px solid var(--emerald-border);
+        }
+
+        .pill-progress {
+            background-color: var(--amber-bg);
+            color: var(--amber-text);
+            border: 1px solid var(--amber-border);
+        }
+
+        .pill-blocked {
+            background-color: var(--rose-bg);
+            color: var(--rose-text);
+            border: 1px solid var(--rose-border);
+        }
+
+        /* Q&A Cards */
+        .qa-card {
+            background-color: var(--bg-subtle);
+            border: 1px solid var(--border-light);
+            border-radius: 10px;
+            padding: 1.1rem 1.35rem;
+            margin-bottom: 0.85rem;
+        }
+
+        .qa-question {
+            font-weight: 650;
+            color: var(--text-primary);
+            margin-bottom: 0.4rem;
+            font-size: 0.96rem;
+        }
+
+        .qa-answer {
+            font-size: 0.93rem;
+            color: var(--text-secondary);
+            margin: 0;
+        }
+
+        /* Glossary Definition List */
+        .glossary-list {
+            display: grid;
+            gap: 0.75rem;
+            margin: 1rem 0 0 0;
+        }
+
+        .glossary-item {
+            display: grid;
+            grid-template-columns: 150px 1fr;
+            gap: 1rem;
+            align-items: baseline;
+            padding: 0.75rem 1rem;
+            background-color: var(--bg-subtle);
+            border-radius: 8px;
+            border: 1px solid var(--border-light);
+            font-size: 0.92rem;
+        }
+
+        .term-tag {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--accent-deep);
+            background-color: var(--accent-soft);
+            border: 1px solid var(--accent-border);
+            padding: 0.2rem 0.55rem;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        /* Responsive & Print Rules */
+        @media (max-width: 720px) {
+            body { padding: 1rem 0.75rem; }
+            .document-sheet { padding: 2rem 1.35rem; border-radius: 12px; }
+            h1 { font-size: 1.85rem; }
+            .kpi-grid, .chart-grid { grid-template-columns: 1fr; }
+            .glossary-item { grid-template-columns: 1fr; gap: 0.4rem; }
+            .term-tag { justify-self: start; }
+        }
+
+        @media print {
+            body { background-color: #ffffff; padding: 0; font-size: 11pt; }
+            .document-sheet {
+                max-width: 100%;
+                box-shadow: none;
+                border: none;
+                padding: 0;
+            }
+            section, .chart-card, .table-card, .qa-card {
+                break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+    <article class="document-sheet">
+        <!-- =================================================================
+             DOCUMENT HEADER
+             - .eyebrow: Session type (e.g., "Lecture Summary", "Meeting Notes", "Workshop Review").
+             - h1: Descriptive title capturing the main subject of the recording.
+             - .meta-bar: Populate available metadata; remove any .meta-item + adjacent
+               .meta-sep if a field (such as Duration or Speaker) is unknown.
+             ================================================================= -->
+        <header>
+            <div class="eyebrow">[Session Type, e.g., Session Summary]</div>
+            <h1>[Main Session or Lecture Title]</h1>
+            <div class="meta-bar">
+                <span class="meta-item"><strong>Date:</strong> [YYYY-MM-DD or MMM DD, YYYY]</span>
+                <span class="meta-sep">&bull;</span>
+                <span class="meta-item"><strong>Speaker:</strong> [Instructor / Presenter Name(s)]</span>
+                <span class="meta-sep">&bull;</span>
+                <span class="meta-item"><strong>Duration:</strong> [HHh MMm or MMm SSs]</span>
+                <span class="meta-sep">&bull;</span>
+                <span class="meta-item"><strong>Track:</strong> [Course, Project, or Topic Category]</span>
+            </div>
+        </header>
+
+        <!-- =================================================================
+             SECTION 01: EXECUTIVE OVERVIEW & KPI CARDS
+             - p.lead: Write a crisp 2-4 sentence synthesis covering the core thesis,
+               primary topics, and final takeaway/decision.
+             - .kpi-grid: Include ONLY if the transcript contains 2-3 clear headline
+               metrics, targets, or counts. Delete .kpi-grid entirely for purely
+               qualitative lectures/discussions.
+             ================================================================= -->
+        <section>
+            <h2><span class="sec-num">01</span> Executive Overview</h2>
+            <p class="lead">[2–4 sentence synthesis of the core theme, primary learning objectives or decisions made, and key takeaways from the session.]</p>
+
+            <!-- OPTIONAL: 3-column headline metric cards (delete if no quantitative KPIs exist) -->
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-label">[Metric 1 Label]</div>
+                    <div class="kpi-value">[Value + Unit]</div>
+                    <div class="kpi-delta">[Context, delta, or target note]</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">[Metric 2 Label]</div>
+                    <div class="kpi-value">[Value + Unit]</div>
+                    <div class="kpi-delta">[Context, delta, or target note]</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">[Metric 3 Label]</div>
+                    <div class="kpi-value">[Value + Unit]</div>
+                    <div class="kpi-delta">[Context, delta, or target note]</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- =================================================================
+             SECTION 02: CHRONOLOGICAL FLOW & CONCEPTUAL BREAKDOWN
+             - Organize into sequential <h3> subsections (2.1, 2.2, 2.3...) matching
+               the exact chronological progression of the speaker.
+             - Explain concepts thoroughly: define terms, preserve technical nuance,
+               and explain "why" and "how" rather than writing terse fragments.
+             - COMPONENT TOOLKIT (use selectively inside each <h3> subsection):
+               * <h4> + <ol>/<ul>: Step-by-step mechanisms, rules, or properties.
+               * .callout: Concrete examples, analogies, or case studies from the talk.
+               * <blockquote>: Verbatim memorable quotes or core rules of thumb.
+               * <pre><code>: Technical syntax, formulas, commands, or data schemas
+                 (omit <pre> for non-technical subjects).
+             ================================================================= -->
+        <section>
+            <h2><span class="sec-num">02</span> Chronological Flow &amp; Conceptual Breakdown</h2>
+
+            <h3>2.1 [First Topic / Module Title]</h3>
+            <p>[Detailed explanation of the first concept introduced, preserving the speaker's logical progression, reasoning, and domain terminology.]</p>
+
+            <h4>[Sub-list Heading, e.g., Core Mechanism / Key Rules]</h4>
+            <ol>
+                <li><strong>[Step or Principle 1]:</strong> [Clear explanation of what happens and why it matters.]</li>
+                <li><strong>[Step or Principle 2]:</strong> [Clear explanation of the next step or constraint.]</li>
+                <li><strong>[Step or Principle 3]:</strong> [Clear explanation of the outcome or edge case.]</li>
+            </ol>
+
+            <!-- OPTIONAL: Highlight box for concrete examples or case studies -->
+            <div class="callout">
+                <strong>Concrete Example:</strong> [Illustrative scenario, real-world case study, or analogy shared by the speaker to clarify Topic 2.1.]
+            </div>
+
+            <!-- OPTIONAL: Verbatim quote or key takeaway rule -->
+            <blockquote>
+                &ldquo;[Notable verbatim quote or guiding principle stated during the session.]&rdquo;
+            </blockquote>
+
+            <h3>2.2 [Second Topic / Module Title]</h3>
+            <p>[Detailed explanation of the next concept in chronological sequence, including trade-offs, caveats, or comparisons discussed.]</p>
+
+            <!-- OPTIONAL: Code, formula, or CLI snippet (delete if not applicable) -->
+            <pre><code><span class="code-comment">// [Brief description of snippet or formula]</span>
+<span class="code-kw">type</span> <span class="code-type">[StructOrConceptName]</span> <span class="code-kw">struct</span> {
+    [Field1] <span class="code-type">[Type]</span> <span class="code-comment">// [Inline explanation]</span>
+    [Field2] <span class="code-type">[Type]</span> <span class="code-comment">// [Inline explanation]</span>
+}</code></pre>
+        </section>
+
+        <!-- =================================================================
+             SECTION 03: VISUAL ANALYTICS & BENCHMARKS (OPTIONAL)
+             - Include ONLY when the transcript contains numerical breakdowns,
+               percentages, time allocations, or trend comparisons.
+             - BAR CHART (.bar-item): Set style="width: XX%;" proportional to the
+               percentage or relative value of each item. Palette options:
+               #2563eb (blue), #0ea5e9 (sky), #6366f1 (indigo), #10b981 (emerald), #f59e0b (amber).
+             - SVG LINE CHART: Plot 4–6 data points within x=[48..302] and y=[20..134]
+               (note: SVG y=20 is top/max value, y=134 is bottom/min value). Update
+               <polygon> (for area fill), <polyline> (for line), <circle> markers,
+               and <text> axis labels to match.
+             ================================================================= -->
+        <section>
+            <h2><span class="sec-num">03</span> Visual Analytics &amp; Benchmarks</h2>
+            <div class="chart-grid">
+                <!-- Component A: Horizontal Proportion / Breakdown Bar Chart -->
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <span class="chart-title">[Bar Chart Title, e.g., Time or Latency Breakdown]</span>
+                        <span class="chart-unit">[Total, e.g., 100% or 300 ms]</span>
+                    </div>
+                    <div class="bar-item">
+                        <div class="bar-meta">
+                            <span>[Category 1]</span>
+                            <span class="bar-val">[Value] &middot; [XX]%</span>
+                        </div>
+                        <div class="bar-track"><div class="bar-fill" style="width: 43%; background-color: #2563eb;"></div></div>
+                    </div>
+                    <div class="bar-item">
+                        <div class="bar-meta">
+                            <span>[Category 2]</span>
+                            <span class="bar-val">[Value] &middot; [XX]%</span>
+                        </div>
+                        <div class="bar-track"><div class="bar-fill" style="width: 28%; background-color: #0ea5e9;"></div></div>
+                    </div>
+                    <div class="bar-item">
+                        <div class="bar-meta">
+                            <span>[Category 3]</span>
+                            <span class="bar-val">[Value] &middot; [XX]%</span>
+                        </div>
+                        <div class="bar-track"><div class="bar-fill" style="width: 20%; background-color: #6366f1;"></div></div>
+                    </div>
+                    <div class="bar-item">
+                        <div class="bar-meta">
+                            <span>[Category 4]</span>
+                            <span class="bar-val">[Value] &middot; [XX]%</span>
+                        </div>
+                        <div class="bar-track"><div class="bar-fill" style="width: 9%; background-color: #10b981;"></div></div>
+                    </div>
+                </div>
+
+                <!-- Component B: Inline SVG Trend Line Chart -->
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <span class="chart-title">[Line Chart Title, e.g., Metric vs. Variable]</span>
+                        <span class="chart-unit">[Unit / Scale]</span>
+                    </div>
+                    <svg viewBox="0 0 330 165" width="100%" height="165" role="img" aria-label="[Accessible description of trend chart]">
+                        <defs>
+                            <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="#2563eb" stop-opacity="0.16"/>
+                                <stop offset="100%" stop-color="#2563eb" stop-opacity="0.0"/>
+                            </linearGradient>
+                        </defs>
+                        <!-- Horizontal Grid Lines -->
+                        <line x1="38" y1="20" x2="312" y2="20" stroke="#e2e8f0" stroke-dasharray="3 3"/>
+                        <line x1="38" y1="58" x2="312" y2="58" stroke="#e2e8f0" stroke-dasharray="3 3"/>
+                        <line x1="38" y1="96" x2="312" y2="96" stroke="#e2e8f0" stroke-dasharray="3 3"/>
+                        <line x1="38" y1="134" x2="312" y2="134" stroke="#cbd5e1"/>
+                        <!-- Y-Axis Labels -->
+                        <text x="4" y="23" font-family="JetBrains Mono, monospace" font-size="9.5" fill="#64748b">[High]</text>
+                        <text x="4" y="61" font-family="JetBrains Mono, monospace" font-size="9.5" fill="#64748b">[Mid]</text>
+                        <text x="4" y="99" font-family="JetBrains Mono, monospace" font-size="9.5" fill="#64748b">[Low]</text>
+                        <!-- Area Fill (must share x,y points with polyline, closed at y=134) -->
+                        <polygon fill="url(#areaGrad)" points="48,112 112,80 176,46 240,33 302,26 302,134 48,134"/>
+                        <!-- Data Line -->
+                        <polyline fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="48,112 112,80 176,46 240,33 302,26"/>
+                        <!-- Data Markers (highlight optimal/target point with solid fill) -->
+                        <circle cx="48" cy="112" r="3.5" fill="#ffffff" stroke="#2563eb" stroke-width="2.5"/>
+                        <circle cx="112" cy="80" r="3.5" fill="#ffffff" stroke="#2563eb" stroke-width="2.5"/>
+                        <circle cx="176" cy="46" r="4.5" fill="#2563eb" stroke="#ffffff" stroke-width="2"/>
+                        <circle cx="240" cy="33" r="3.5" fill="#ffffff" stroke="#2563eb" stroke-width="2.5"/>
+                        <circle cx="302" cy="26" r="3.5" fill="#ffffff" stroke="#2563eb" stroke-width="2.5"/>
+                        <!-- X-Axis Labels -->
+                        <text x="34" y="152" font-family="JetBrains Mono, monospace" font-size="9.5" fill="#64748b">[X1]</text>
+                        <text x="98" y="152" font-family="JetBrains Mono, monospace" font-size="9.5" fill="#64748b">[X2]</text>
+                        <text x="162" y="152" font-family="JetBrains Mono, monospace" font-size="9.5" font-weight="600" fill="#2563eb">[X3]</text>
+                        <text x="226" y="152" font-family="JetBrains Mono, monospace" font-size="9.5" fill="#64748b">[X4]</text>
+                        <text x="286" y="152" font-family="JetBrains Mono, monospace" font-size="9.5" fill="#64748b">[X5]</text>
+                    </svg>
+                </div>
+            </div>
+        </section>
+
+        <!-- =================================================================
+             SECTION 04: STRUCTURED TABLES (COMPARISONS & ACTION ITEMS)
+             - TABLE 4.1 (Comparative Matrix): Use whenever the speaker compares
+               2+ options, approaches, tools, frameworks, or historical phases.
+               Use class="mono-cell" on numeric/code columns for tabular alignment.
+             - TABLE 4.2 (Action Items): Use for tasks, homework, decisions, or
+               next steps. Status pill classes:
+               * .pill-done     (green)  -> Completed / Approved / Decided
+               * .pill-progress (amber)  -> In Progress / Pending / Assigned
+               * .pill-blocked  (rose)   -> Blocked / At Risk / Open Question
+             ================================================================= -->
+        <section>
+            <h2><span class="sec-num">04</span> Comparative Analysis &amp; Action Matrix</h2>
+
+            <h3>4.1 [Comparison Table Title, e.g., Approach / Option Comparison]</h3>
+            <div class="table-card">
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>[Option / Approach]</th>
+                                <th>[Dimension 1]</th>
+                                <th>[Dimension 2]</th>
+                                <th>[Trade-off / Constraint]</th>
+                                <th>[Best Use Case]</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>[Option A]</strong></td>
+                                <td class="mono-cell">[Numeric/Spec]</td>
+                                <td class="mono-cell">[Numeric/Spec]</td>
+                                <td>[Key limitation]</td>
+                                <td>[When to choose Option A]</td>
+                            </tr>
+                            <tr>
+                                <td><strong>[Option B]</strong></td>
+                                <td class="mono-cell">[Numeric/Spec]</td>
+                                <td class="mono-cell">[Numeric/Spec]</td>
+                                <td>[Key limitation]</td>
+                                <td>[When to choose Option B]</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <h3>4.2 Follow-Up Action Items</h3>
+            <div class="table-card">
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Task / Deliverable</th>
+                                <th>Owner</th>
+                                <th>Due Date</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>[Specific action item or assignment mentioned in transcript]</td>
+                                <td>[Person / Role]</td>
+                                <td class="mono-cell">[YYYY-MM-DD or TBD]</td>
+                                <td><span class="pill pill-done">[Completed]</span></td>
+                            </tr>
+                            <tr>
+                                <td>[Second action item or follow-up investigation]</td>
+                                <td>[Person / Role]</td>
+                                <td class="mono-cell">[YYYY-MM-DD or TBD]</td>
+                                <td><span class="pill pill-progress">[In Progress]</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- =================================================================
+             SECTION 05: QUESTIONS & ANSWERS (Q&A)
+             - Capture every audience question, student inquiry, or rhetorical
+               hypothetical posed during the session along with the full answer.
+             - Duplicate .qa-card for each Q&A exchange.
+             ================================================================= -->
+        <section>
+            <h2><span class="sec-num">05</span> Questions &amp; Answers</h2>
+            <div class="qa-card">
+                <div class="qa-question">Q: [Exact or synthesized question asked during the session]</div>
+                <p class="qa-answer"><strong>A:</strong> [Complete, accurate explanation or resolution provided by the speaker.]</p>
+            </div>
+            <div class="qa-card">
+                <div class="qa-question">Q: [Second question or edge-case inquiry]</div>
+                <p class="qa-answer"><strong>A:</strong> [Complete answer, including any caveats mentioned.]</p>
+            </div>
+        </section>
+
+        <!-- =================================================================
+             SECTION 06: KEY TERMS & GLOSSARY
+             - Extract domain-specific terms, acronyms, and concepts defined or
+               heavily used in the session. Keep .term-tag concise (1-3 words).
+             ================================================================= -->
+        <section>
+            <h2><span class="sec-num">06</span> Key Terms &amp; Glossary</h2>
+            <div class="glossary-list">
+                <div class="glossary-item">
+                    <span class="term-tag">[Term 1]</span>
+                    <span>[Clear, plain-language definition grounded in how the term was used in this session.]</span>
+                </div>
+                <div class="glossary-item">
+                    <span class="term-tag">[Term 2]</span>
+                    <span>[Clear, plain-language definition grounded in how the term was used in this session.]</span>
+                </div>
+            </div>
+        </section>
+    </article>
+</body>
+</html>

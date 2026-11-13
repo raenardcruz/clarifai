@@ -143,6 +143,7 @@ import { useToast } from 'primevue/usetoast'
 import moment from 'moment'
 import axios from 'axios'
 import TagBadge from './tags/TagBadge.vue'
+import { extractSummaryPreview } from '../utils/summary'
 
 const isIosApp = computed(() => {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios'
@@ -229,12 +230,7 @@ const formattedDuration = computed(() => {
 })
 
 const preview = computed(() => {
-  if (props.recording.summary_md) {
-    const lines = props.recording.summary_md.split('\n')
-    const firstTextLine = lines.find(l => l.trim().length > 10 && !l.startsWith('#'))
-    return firstTextLine ? firstTextLine.substring(0, 95) + '...' : null
-  }
-  return null
+  return extractSummaryPreview(props.recording.summary_md, 95)
 })
 </script>
 

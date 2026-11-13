@@ -466,6 +466,7 @@ import TagPicker from '../components/tags/TagPicker.vue'
 import { useOfflineRecordingsStore } from '../stores/offlineRecordings'
 import { useTagsStore } from '../stores/tags'
 import { getPublicBaseUrl } from '../services/apiConfig'
+import { extractSummaryPreview } from '../utils/summary'
 
 const route = useRoute()
 const router = useRouter()
@@ -708,12 +709,7 @@ const getStatusClass = (status) => {
 }
 
 const getSnippet = (recording) => {
-  if (recording.summary_md) {
-    const lines = recording.summary_md.split('\n')
-    const first = lines.find(l => l.trim().length > 10 && !l.startsWith('#'))
-    return first ? first.substring(0, 75) + '...' : ''
-  }
-  return ''
+  return extractSummaryPreview(recording.summary_md, 75) || ''
 }
 </script>
 

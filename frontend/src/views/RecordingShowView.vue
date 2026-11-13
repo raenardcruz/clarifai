@@ -262,7 +262,7 @@
               </div>
             </div>
 
-            <div class="markdown-content" v-html="parsedSummary"></div>
+            <SummaryRenderer ref="summaryRendererRef" :content="recording.summary_md" />
           </div>
 
           <!-- Empty Summary State -->
@@ -431,7 +431,6 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import moment from 'moment'
-import { marked } from 'marked'
 import { useToast } from 'primevue/usetoast'
 import { 
   Calendar, Clock, Share2, UserPlus, Download, Wand2, Sparkles, Loader2, 
@@ -442,9 +441,13 @@ import { useIntervalFn, useTitle } from '@vueuse/core'
 import Dialog from 'primevue/dialog'
 import { Capacitor } from '@capacitor/core'
 import SpeechmaticsUsage from '../components/SpeechmaticsUsage.vue'
+import SummaryRenderer from '../components/SummaryRenderer.vue'
 import TagPicker from '../components/tags/TagPicker.vue'
 import { useTagsStore } from '../stores/tags'
 import { getPublicBaseUrl } from '../services/apiConfig'
+import { countSummaryWords, extractSummaryText } from '../utils/summary'
+
+const summaryRendererRef = ref(null)
 
 const route = useRoute()
 const router = useRouter()
@@ -591,8 +594,7 @@ const speakerCount = computed(() => {
 })
 
 const wordCount = computed(() => {
-  if (!recording.value?.summary_md) return 0
-  return recording.value.summary_md.trim().split(/\s+/).length
+  return countSummaryWords(recording.value?.summary_md)
 })
 
 const readingTime = computed(() => {
@@ -636,7 +638,7 @@ const deleteRecording = async () => {
 
 const copySummary = () => {
   if (!recording.value?.summary_md) return
-  navigator.clipboard.writeText(recording.value.summary_md)
+  navigator.clipboard.writeText(extractSummaryText(recording.value.summary_md))
   copiedSummary.value = true
   toast.add({ severity: 'success', summary: 'Copied', detail: 'Summary copied to clipboard.', life: 2500 })
   setTimeout(() => { copiedSummary.value = false }, 2500)
@@ -695,10 +697,6 @@ onUnmounted(() => { stopPolling() })
 
 watch(isProcessing, (newValue) => {
   if (newValue) { startPolling() } else { stopPolling() }
-})
-
-const parsedSummary = computed(() => {
-  return recording.value?.summary_md ? marked(recording.value.summary_md) : ''
 })
 
 const updateSegment = async (segment) => {
@@ -821,7 +819,11 @@ const inviteLink = async () => {
 }
 
 const printSummary = () => {
-  window.print()
+  if (summaryRendererRef.value) {
+    summaryRendererRef.value.print()
+  } else {
+    window.print()
+  }
 }
 
 // Formatting Helpers

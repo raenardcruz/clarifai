@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,9 @@ import (
 
 	"note-taker/backend/models"
 )
+
+//go:embed templates/notetaking-summary-template.html
+var summaryHTMLTemplate string
 
 const OllamaModel = "gemma4:12b-mlx"
 const DefaultGeminiModel = "gemini-3.8-flash"
@@ -311,9 +315,77 @@ func generateText(prompt string) (string, error) {
 	return callOllama(ollamaModel, prompt)
 }
 
+// SummaryMetadata carries optional recording context to populate the HTML template header.
+type SummaryMetadata struct {
+	Title     string
+	Date      string
+	Duration  string
+	Speakers  string
+	IsMedical bool
+}
+
+func cleanHTMLResponse(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	// Strip markdown code fences if the model wrapped the HTML document in ```html ... ```
+	if strings.HasPrefix(trimmed, "```") {
+		if idx := strings.Index(trimmed, "\n"); idx != -1 {
+			trimmed = trimmed[idx+1:]
+		}
+		trimmed = strings.TrimSpace(trimmed)
+		if strings.HasSuffix(trimmed, "```") {
+			trimmed = strings.TrimSuffix(trimmed, "```")
+			trimmed = strings.TrimSpace(trimmed)
+		}
+	}
+	return trimmed
+}
+
+func buildSummaryPrompt(transcript string, prompt string, meta SummaryMetadata) string {
+	var b strings.Builder
+	b.WriteString(strings.TrimSpace(prompt))
+	b.WriteString("\n\n")
+
+	if meta.Title != "" || meta.Date != "" || meta.Duration != "" || meta.Speakers != "" || meta.IsMedical {
+		b.WriteString("Session Metadata (use to populate the template header accurately):\n")
+		if meta.IsMedical {
+			b.WriteString("- Session Type: Clinical Consultation — SOAP Note\n")
+		}
+		if meta.Title != "" {
+			b.WriteString(fmt.Sprintf("- Title: %s\n", meta.Title))
+		}
+		if meta.Date != "" {
+			b.WriteString(fmt.Sprintf("- Date: %s\n", meta.Date))
+		}
+		if meta.Duration != "" {
+			b.WriteString(fmt.Sprintf("- Duration: %s\n", meta.Duration))
+		}
+		if meta.Speakers != "" {
+			b.WriteString(fmt.Sprintf("- Speakers: %s\n", meta.Speakers))
+		}
+		b.WriteString("\n")
+	}
+
+	b.WriteString(`OUTPUT FORMAT REQUIREMENTS (STRICT):
+1. Return ONLY a complete, valid, standalone HTML5 document starting with <!DOCTYPE html> and ending with </html>. Do NOT wrap the output in markdown code fences (no ` + "```" + `html or ` + "```" + `).
+2. Follow the exact HTML structure, CSS variables, classes, and LLM INSTRUCTIONS defined in the HTML template below. Keep all CSS inside <style> and render all charts/diagrams in pure HTML/CSS or inline <svg> (no external JS chart libraries).
+3. Use the template's full visual & structural capabilities whenever supported by the transcript: KPI cards (.kpi-grid), chronological <h3> subsections with <ol>/<ul>, .callout boxes, <blockquote>, <pre><code>, horizontal bar charts (.bar-item), inline <svg> trend/comparison charts, structured <table> comparisons and action item tables with status pills (.pill-done, .pill-progress, .pill-blocked), .qa-card blocks, and .glossary-item tags.
+4. Replace every [bracketed] placeholder with real content from the transcript. Cleanly delete any optional section or component that lacks supporting data in the transcript, and renumber remaining <span class="sec-num"> badges sequentially (01, 02, 03...).
+5. Escape HTML special characters (&, <, >) inside prose and <code> blocks.
+
+HTML TEMPLATE:
+`)
+	b.WriteString(summaryHTMLTemplate)
+	b.WriteString("\n\nTranscript:\n")
+	b.WriteString(transcript)
+	return b.String()
+}
+
 func GenerateCustomSummary(transcript string, prompt string) string {
-	systemPrompt := fmt.Sprintf("%s\n\nFormat the output in clean Markdown.", prompt)
-	fullPrompt := fmt.Sprintf("%s\n\nTranscript:\n%s", systemPrompt, transcript)
+	return GenerateCustomSummaryWithMeta(transcript, prompt, SummaryMetadata{})
+}
+
+func GenerateCustomSummaryWithMeta(transcript string, prompt string, meta SummaryMetadata) string {
+	fullPrompt := buildSummaryPrompt(transcript, prompt, meta)
 
 	resp, err := generateText(fullPrompt)
 	if err != nil {
@@ -325,15 +397,16 @@ func GenerateCustomSummary(transcript string, prompt string) string {
 		return fmt.Sprintf("> [!ERROR]\n> Could not generate summary via %s.\n\nError details: %v", providerName, err)
 	}
 
-	if strings.TrimSpace(resp) == "" {
+	cleaned := cleanHTMLResponse(resp)
+	if cleaned == "" {
 		return "Error: No response generated."
 	}
 
-	return resp
+	return cleaned
 }
 
 func GenerateSummaryAndTitle(transcript string) string {
-	return GenerateCustomSummary(transcript, "Provide a concise executive summary and a list of action items based on this transcript.")
+	return GenerateCustomSummary(transcript, models.DefaultExecutiveSummaryPrompt)
 }
 
 func GenerateTitle(transcript string) string {

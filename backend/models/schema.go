@@ -69,29 +69,32 @@ type RecordingAccess struct {
 	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
 
-const DefaultMedicalSummaryPrompt = `Analyze the following medical or clinical encounter transcript and generate a structured Clinical / SOAP Note in clean Markdown:
+const DefaultExecutiveSummaryPrompt = `Analyze the following transcript and produce a comprehensive, deeply structured session summary that takes full advantage of the HTML summary template's design system:
+- **Executive Overview & KPIs**: Synthesize the core thesis, primary topics, speaker viewpoints, and final outcomes in a crisp 2-4 sentence lead paragraph. If the transcript contains 2-3 clear headline metrics, counts, targets, or durations, populate the .kpi-grid cards.
+- **Chronological Flow & Conceptual Breakdown**: Organize into sequential <h3> subsections (2.1, 2.2, ...) matching the exact chronological progression of the session. Attribute key ideas and decisions to specific speakers. Use <ol>/<ul> for step-by-step mechanisms, .callout boxes for concrete examples/analogies/case studies, <blockquote> for notable verbatim quotes, and <pre><code> for technical syntax, formulas, or commands when applicable.
+- **Visual Analytics & Benchmarks**: Whenever the transcript includes numerical breakdowns, percentages, time allocations, scores, or trends, create proportional CSS horizontal bar charts (.bar-item) and/or inline SVG trend line charts (or clean inline SVG diagrams) in Section 03.
+- **Comparative Analysis & Action Matrix**: Whenever 2+ options, approaches, tools, or phases are compared, build a structured comparison <table>. Extract all concrete tasks, decisions, and next steps into the Follow-Up Action Items table with owners, due dates, and status pills (.pill-done, .pill-progress, .pill-blocked).
+- **Questions & Answers**: Capture audience or participant questions and their complete answers in .qa-card blocks.
+- **Key Terms & Glossary**: Extract domain-specific terms, acronyms, and key concepts into .glossary-item tags with clear definitions.
+- Cleanly omit any optional section or component that has no supporting data in the transcript and renumber remaining .sec-num badges sequentially.`
 
-### 1. Patient & Encounter Overview
-- Chief Complaint and reason for consultation
-
-### 2. Subjective (History of Present Illness)
-- Patient-reported symptoms, timeline, pain/severity, and relevant medical history
-
-### 3. Objective & Clinical Discussion
-- Observed clinical signs, vital signs or lab/diagnostic results mentioned, physical examination discussions
-
-### 4. Assessment & Clinical Impression
-- Differential or confirmed diagnoses, clinical reasoning, and provider impressions
-
-### 5. Plan & Management
-- Prescriptions/medications (dosage and instructions if discussed), treatment recommendations, ordered tests/referrals, lifestyle advice, and follow-up plan.
-
-Ensure strict clinical accuracy, capturing concrete details without omitting medical context.`
+const DefaultMedicalSummaryPrompt = `Analyze the following medical or clinical encounter transcript and generate a structured Clinical / SOAP Note using the HTML summary template's full layout:
+- **Header & Overview (Section 01)**: Set the eyebrow to "Clinical Consultation — SOAP Note" and summarize the Chief Complaint and reason for consultation in the lead paragraph. Include .kpi-grid cards ONLY if concrete vitals, lab values, or pain/severity scores are explicitly stated.
+- **Chronological Clinical Breakdown (Section 02)**: Organize into <h3> subsections:
+  - 2.1 Subjective (History of Present Illness): patient-reported symptoms, timeline, pain/severity, and relevant medical history.
+  - 2.2 Objective & Clinical Discussion: observed clinical signs, vital signs, lab/diagnostic results mentioned, and physical exam discussions.
+  - 2.3 Assessment & Clinical Impression: differential or confirmed diagnoses, clinical reasoning, and provider impressions.
+  - 2.4 Plan & Management: prescriptions/medications (with dosage and instructions if discussed), ordered tests/referrals, lifestyle advice, and follow-up plan.
+  Use .callout boxes for critical clinical warnings, allergies, or red flags, and <blockquote> for key verbatim patient statements when helpful.
+- **Visual Analytics (Section 03)**: Include ONLY if numerical vitals, lab trends, or symptom/dosage comparisons are discussed.
+- **Structured Clinical Tables (Section 04)**: Use a comparison <table> if multiple diagnostic or treatment options are weighed, and use the Action Matrix table for medications, ordered tests, referrals, and follow-up items with status pills (.pill-done, .pill-progress, .pill-blocked).
+- **Patient Q&A (Section 05)** and **Clinical Glossary (Section 06)**: Capture patient questions and clinician explanations in .qa-card blocks, and define medical terms/medications in .glossary-item tags.
+Ensure strict clinical accuracy without inventing data; cleanly omit any empty optional sections.`
 
 type Settings struct {
 	ID                     uint    `gorm:"primaryKey" json:"id"`
 	AISummarizationMode    string  `gorm:"column:ai_summarization_mode;default:auto" json:"ai_summarization_mode"`
-	ExecutiveSummaryPrompt string  `gorm:"column:executive_summary_prompt;type:text;default:'Analyze the following transcript and write a detailed, cohesive executive summary in a narrative paragraph format. Synthesize the meeting''s core purpose, main arguments, and final outcomes into smooth, professional prose, explicitly attributing key ideas, decisions, and viewpoints to specific speakers by name (or speaker identifier) directly within the flow of the text. Ensure the summary is comprehensive and captures concrete details, specific project names, and actionable next steps, but deliver it entirely as a sequence of well-structured paragraphs without using any bullet points, lists, or tables.'"`
+	ExecutiveSummaryPrompt string  `gorm:"column:executive_summary_prompt;type:text" json:"executive_summary_prompt"`
 	MedicalSummaryPrompt   string  `gorm:"column:medical_summary_prompt;type:text" json:"medical_summary_prompt"`
 	SpeechmaticsAPIKey     *string `gorm:"column:speechmatics_api_key" json:"speechmatics_api_key,omitempty"`
 	OllamaURL              string  `gorm:"column:ollama_url;default:'http://localhost:11434'" json:"ollama_url"`

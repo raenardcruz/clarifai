@@ -418,7 +418,7 @@ func GenerateSummary(recordingID string, instruction string) {
 			prompt = models.DefaultMedicalSummaryPrompt
 		}
 	} else if prompt == "" {
-		prompt = "Summarize this."
+		prompt = models.DefaultExecutiveSummaryPrompt
 	}
 
 	if strings.TrimSpace(instruction) != "" {
@@ -448,8 +448,14 @@ func GenerateSummarySync(recordingID string, db *gorm.DB, prompt string) {
 	db.Where("recording_id = ?", recordingID).Order("start_time asc").Find(&segments)
 
 	var fullTextBuilder strings.Builder
+	speakerSet := make(map[string]bool)
+	var speakers []string
 	for _, s := range segments {
 		fullTextBuilder.WriteString(fmt.Sprintf("**%s**: %s\n\n", s.Speaker, s.Text))
+		if s.Speaker != "" && !speakerSet[s.Speaker] {
+			speakerSet[s.Speaker] = true
+			speakers = append(speakers, s.Speaker)
+		}
 	}
 	fullText := fullTextBuilder.String()
 
@@ -458,8 +464,29 @@ func GenerateSummarySync(recordingID string, db *gorm.DB, prompt string) {
 		recording.Title = aiTitle
 	}
 
-	summaryMD := GenerateCustomSummary(fullText, prompt)
-	recording.SummaryMD = summaryMD
+	var durationStr string
+	if recording.Duration != nil && *recording.Duration > 0 {
+		totalSec := int(*recording.Duration)
+		hrs := totalSec / 3600
+		mins := (totalSec % 3600) / 60
+		secs := totalSec % 60
+		if hrs > 0 {
+			durationStr = fmt.Sprintf("%dh %02dm", hrs, mins)
+		} else {
+			durationStr = fmt.Sprintf("%dm %02ds", mins, secs)
+		}
+	}
+
+	meta := SummaryMetadata{
+		Title:     recording.Title,
+		Date:      recording.CreatedAt.Format("Jan 02, 2006"),
+		Duration:  durationStr,
+		Speakers:  strings.Join(speakers, ", "),
+		IsMedical: recording.IsMedical,
+	}
+
+	summaryHTML := GenerateCustomSummaryWithMeta(fullText, prompt, meta)
+	recording.SummaryMD = summaryHTML
 	recording.Status = "completed"
 	db.Save(&recording)
 
