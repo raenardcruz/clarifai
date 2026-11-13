@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
@@ -99,5 +100,63 @@ func TestCallGeminiSuccess(t *testing.T) {
 
 	if res != "Generated summary from Gemini." {
 		t.Errorf("expected 'Generated summary from Gemini.', got '%s'", res)
+	}
+}
+
+func TestCleanHTMLResponse(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "plain html",
+			in:   "<!DOCTYPE html><html><body>Hi</body></html>",
+			want: "<!DOCTYPE html><html><body>Hi</body></html>",
+		},
+		{
+			name: "fenced html",
+			in:   "```html\n<!DOCTYPE html><html><body>Hi</body></html>\n```",
+			want: "<!DOCTYPE html><html><body>Hi</body></html>",
+		},
+		{
+			name: "fenced generic",
+			in:   "```\n<!DOCTYPE html><html><body>Hi</body></html>\n```",
+			want: "<!DOCTYPE html><html><body>Hi</body></html>",
+		},
+	}
+
+	for _, tc := range cases {
+		got := cleanHTMLResponse(tc.in)
+		if got != tc.want {
+			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestBuildSummaryPromptIncludesTemplateAndMetadata(t *testing.T) {
+	meta := SummaryMetadata{
+		Title:    "Architecture Review",
+		Date:     "Nov 13, 2026",
+		Duration: "45m 10s",
+		Speakers: "Alice, Bob",
+	}
+	out := buildSummaryPrompt("Alice: Hello world.", "Focus on KPIs and charts.", meta)
+
+	required := []string{
+		"Focus on KPIs and charts.",
+		"Architecture Review",
+		"Nov 13, 2026",
+		"45m 10s",
+		"Alice, Bob",
+		"<!DOCTYPE html>",
+		"document-sheet",
+		"kpi-grid",
+		"Alice: Hello world.",
+	}
+	for _, needle := range required {
+		if !strings.Contains(out, needle) {
+			t.Errorf("expected prompt to contain %q", needle)
+		}
 	}
 }

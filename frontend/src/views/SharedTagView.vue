@@ -153,7 +153,7 @@
               </div>
             </div>
           </div>
-          <div class="markdown-content" v-html="parsedSummary"></div>
+          <SummaryRenderer ref="summaryRendererRef" :content="selectedRecording.summary_md" />
         </div>
 
         <div v-else class="apple-doc-card empty-card">
@@ -187,9 +187,10 @@ import { useRoute } from 'vue-router'
 import { Capacitor } from '@capacitor/core'
 import axios from 'axios'
 import moment from 'moment'
-import { marked } from 'marked'
 import { useToast } from 'primevue/usetoast'
 import { useTitle } from '@vueuse/core'
+import SummaryRenderer from '../components/SummaryRenderer.vue'
+import { extractSummaryText } from '../utils/summary'
 import {
   Sparkles,
   Calendar,
@@ -218,6 +219,7 @@ const searchQuery = ref('')
 const selectedSubtagId = ref(null)
 const selectedRecordingId = ref(null)
 const copied = ref(false)
+const summaryRendererRef = ref(null)
 
 const pageTitle = computed(() =>
   sharedTag.value ? `${sharedTag.value.name} — ClarifAi (Shared)` : 'ClarifAi Shared Collection'
@@ -255,7 +257,7 @@ const filteredRecordings = computed(() => {
     list = list.filter(
       (rec) =>
         (rec.title || '').toLowerCase().includes(q) ||
-        (rec.summary_md || '').toLowerCase().includes(q)
+        extractSummaryText(rec.summary_md || '').toLowerCase().includes(q)
     )
   }
   return list
@@ -273,20 +275,20 @@ const selectedRecording = computed(() => {
   return filteredRecordings.value.find((r) => r.id === selectedRecordingId.value) || null
 })
 
-const parsedSummary = computed(() => {
-  return selectedRecording.value?.summary_md ? marked(selectedRecording.value.summary_md) : ''
-})
-
 const copySummary = () => {
   if (!selectedRecording.value?.summary_md) return
-  navigator.clipboard.writeText(selectedRecording.value.summary_md)
+  navigator.clipboard.writeText(extractSummaryText(selectedRecording.value.summary_md))
   copied.value = true
   toast.add({ severity: 'success', summary: 'Copied', detail: 'Summary copied to clipboard.', life: 2500 })
   setTimeout(() => { copied.value = false }, 2500)
 }
 
 const printSummary = () => {
-  window.print()
+  if (summaryRendererRef.value) {
+    summaryRendererRef.value.print()
+  } else {
+    window.print()
+  }
 }
 
 const formatDate = (iso) => moment(iso).format('MMM D, YYYY')

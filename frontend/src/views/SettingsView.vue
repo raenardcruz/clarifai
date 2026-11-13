@@ -441,7 +441,7 @@ const settings = ref({
   gemini_model: 'gemini-3.8-flash',
   gemini_api_key: '',
   gemini_api_base: '',
-  executive_summary_prompt: 'Analyze the following transcript and write a detailed, cohesive executive summary in a narrative paragraph format. Synthesize the meeting\'s core purpose, main arguments, and final outcomes into smooth, professional prose, explicitly attributing key ideas, decisions, and viewpoints to specific speakers by name (or speaker identifier) directly within the flow of the text. Ensure the summary is comprehensive and captures concrete details, specific project names, and actionable next steps, but deliver it entirely as a sequence of well-structured paragraphs without using any bullet points, lists, or tables. Here is the transcript: [PASTE TRANSCRIPT HERE]',
+  executive_summary_prompt: 'Analyze the following transcript and produce a comprehensive, deeply structured session summary that takes full advantage of the HTML summary template\'s design system: include an Executive Overview with KPI cards when metrics exist, a Chronological Flow & Conceptual Breakdown with step-by-step lists, callout boxes, blockquotes, and code blocks, Visual Analytics (CSS bar charts & inline SVG trend charts) for numerical breakdowns, Comparative Analysis & Action Matrix tables with status pills, Questions & Answers, and Key Terms & Glossary. Cleanly omit any optional section without supporting data.',
   medical_summary_prompt: '',
   speechmatics_api_key: ''
 })

@@ -58,7 +58,7 @@
             </div>
           </div>
         </div>
-        <div class="markdown-content" v-html="parsedSummary"></div>
+        <SummaryRenderer ref="summaryRendererRef" :content="recording.summary_md" />
       </div>
       
       <div v-else class="apple-doc-card empty-card">
@@ -93,10 +93,13 @@ import { useRoute } from 'vue-router'
 import { Capacitor } from '@capacitor/core'
 import axios from 'axios'
 import moment from 'moment'
-import { marked } from 'marked'
 import { useToast } from 'primevue/usetoast'
 import { Calendar, Clock, Sparkles, Loader2, Printer, Copy, Check, Stethoscope } from '@lucide/vue'
 import { useTitle } from '@vueuse/core'
+import SummaryRenderer from '../components/SummaryRenderer.vue'
+import { extractSummaryText } from '../utils/summary'
+
+const summaryRendererRef = ref(null)
 
 const isIosApp = computed(() => {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios'
@@ -127,20 +130,20 @@ onMounted(() => {
   fetchRecording()
 })
 
-const parsedSummary = computed(() => {
-  return recording.value?.summary_md ? marked(recording.value.summary_md) : ''
-})
-
 const copySummary = () => {
   if (!recording.value?.summary_md) return
-  navigator.clipboard.writeText(recording.value.summary_md)
+  navigator.clipboard.writeText(extractSummaryText(recording.value.summary_md))
   copied.value = true
   toast.add({ severity: 'success', summary: 'Copied', detail: 'Summary copied to clipboard.', life: 2500 })
   setTimeout(() => { copied.value = false }, 2500)
 }
 
 const printSummary = () => {
-  window.print()
+  if (summaryRendererRef.value) {
+    summaryRendererRef.value.print()
+  } else {
+    window.print()
+  }
 }
 
 const formattedDate = computed(() => recording.value ? moment(recording.value.created_at).format('MMMM D, YYYY') : '')
