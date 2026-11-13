@@ -47,7 +47,11 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = null
     user.value = null
     delete axios.defaults.headers.common['Authorization']
-    if (router && router.currentRoute?.value?.name !== 'login') {
+    const currentRoute = router?.currentRoute?.value
+    const isPublicRoute = currentRoute?.meta?.requiresAuth === false ||
+      currentRoute?.path?.startsWith('/share') ||
+      currentRoute?.path?.startsWith('/invite')
+    if (router && currentRoute?.name !== 'login' && !isPublicRoute) {
       router.push('/login')
     }
   }

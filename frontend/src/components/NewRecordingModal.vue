@@ -77,6 +77,16 @@
         </div>
       </div>
 
+      <!-- Optional Tags Assignment -->
+      <div class="modal-tags-section">
+        <span class="modal-tags-label">Tags (Optional)</span>
+        <TagPicker
+          v-model="selectedTagIds"
+          placeholder="Assign tags..."
+          :disabled="isRecording || isUploading"
+        />
+      </div>
+
       <!-- Live Recording Mode -->
       <div v-if="activeMode === 'live'" class="live-recording-studio">
         <div class="studio-card" :class="{ 'recording-active': isRecording }">
@@ -200,6 +210,7 @@ import axios from 'axios'
 import { useIntervalFn } from '@vueuse/core'
 import { audioRecorder } from '../services/audioRecorder'
 import { useOfflineRecordingsStore } from '../stores/offlineRecordings'
+import TagPicker from './tags/TagPicker.vue'
 import { storeToRefs } from 'pinia'
 
 const emit = defineEmits(['close', 'refresh'])
@@ -212,6 +223,7 @@ const isNative = audioRecorder.isNative
 const activeMode = ref('live')
 const fileInputRef = ref(null)
 const isMedical = ref(false)
+const selectedTagIds = ref([])
 const isDragging = ref(false)
 
 const isUploading = ref(false)
@@ -348,7 +360,8 @@ const stopRecording = async () => {
     const savedItem = await offlineStore.addRecording({
       ...result,
       title: `${titlePrefix} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-      isMedical: isMedical.value
+      isMedical: isMedical.value,
+      tagIds: selectedTagIds.value
     }, result.blob)
 
     // 2. If offline, alert user and finish
@@ -507,6 +520,7 @@ const uploadFile = async (file) => {
       filename: file.name,
       total_chunks: totalChunks,
       is_medical: isMedical.value,
+      tag_ids: selectedTagIds.value,
     })
 
     emit('close')
@@ -1076,5 +1090,21 @@ const uploadFile = async (file) => {
   0% { transform: scale(0.95); opacity: 0.7; }
   50% { transform: scale(1.3); opacity: 1; }
   100% { transform: scale(0.95); opacity: 0.7; }
+}
+
+.modal-tags-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.modal-tags-label {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #475569;
 }
 </style>

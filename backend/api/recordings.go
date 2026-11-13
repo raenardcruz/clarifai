@@ -57,12 +57,13 @@ type SegmentUpdate struct {
 }
 
 type RecordingOut struct {
-	ID        string   `json:"id"`
-	Title     string   `json:"title"`
-	Status    string   `json:"status"`
-	CreatedAt string   `json:"created_at"`
-	Duration  *float64 `json:"duration"`
-	IsMedical bool     `json:"is_medical"`
+	ID        string       `json:"id"`
+	Title     string       `json:"title"`
+	Status    string       `json:"status"`
+	CreatedAt string       `json:"created_at"`
+	Duration  *float64     `json:"duration"`
+	IsMedical bool         `json:"is_medical"`
+	Tags      []TagSummary `json:"tags"`
 }
 
 func getSpeechmaticsKey(settings *models.Settings) string {
@@ -73,8 +74,10 @@ func getSpeechmaticsKey(settings *models.Settings) string {
 }
 
 func SetupRecordingsRoutes(router *gin.RouterGroup) {
-	// Public route (sharing) does not require auth
+	// Public routes (sharing & meeting invites) do not require auth
 	router.GET("/share/:recording_id", getSharedRecording)
+	router.GET("/invite/:token", getMeetingInvite)
+	router.POST("/invite/:token/accept", acceptMeetingInvite)
 
 	// Auth group
 	authGroup := router.Group("")
@@ -87,8 +90,12 @@ func SetupRecordingsRoutes(router *gin.RouterGroup) {
 		authGroup.GET("", getRecordings)
 		authGroup.GET("/recent", getRecentRecordings)
 		authGroup.GET("/speechmatics-usage", getSpeechmaticsUsage)
+		authGroup.POST("/:recording_id/invite", createMeetingInvite)
+		authGroup.POST("/invite/:token/join", joinMeetingInvite)
 		authGroup.GET("/:recording_id", getRecordingDetails)
 		authGroup.PATCH("/:recording_id", updateRecording)
+		authGroup.PUT("/:recording_id/tags", setRecordingTags)
+		authGroup.POST("/bulk-tags", bulkUpdateRecordingTags)
 		authGroup.PUT("/:recording_id/segments/:segment_id", updateSegment)
 		authGroup.POST("/:recording_id/summarize", triggerSummary)
 		authGroup.POST("/:recording_id/detect-speakers", detectRecordingSpeakers)
@@ -105,6 +112,37 @@ func getContextUser(c *gin.Context) (*models.User, error) {
 	return userVal.(*models.User), nil
 }
 
+func getUserUsedSeconds(db *gorm.DB, userID uint) float64 {
+	var totalSeconds float64
+	db.Model(&models.Recording{}).
+		Where("user_id = ? AND duration IS NOT NULL", userID).
+		Select("COALESCE(SUM(duration), 0)").
+		Scan(&totalSeconds)
+	return totalSeconds
+}
+
+func isUserUsageLimitExceeded(db *gorm.DB, user *models.User) bool {
+	// Usage limits apply only to non-admins.
+	if user.Role == "admin" {
+		return false
+	}
+	limitSeconds := user.TranscriptionLimitHours * 3600.0
+	if limitSeconds <= 0 {
+		return true
+	}
+	return getUserUsedSeconds(db, user.ID) >= limitSeconds
+}
+
+func canAccessRecording(db *gorm.DB, recordingID string, userID uint) bool {
+	var count int64
+	db.Model(&models.Recording{}).Where("id = ? AND user_id = ?", recordingID, userID).Count(&count)
+	if count > 0 {
+		return true
+	}
+	db.Model(&models.RecordingAccess{}).Where("recording_id = ? AND user_id = ?", recordingID, userID).Count(&count)
+	return count > 0
+}
+
 func uploadAudio(c *gin.Context) {
 	currentUser, err := getContextUser(c)
 	if err != nil {
@@ -113,6 +151,11 @@ func uploadAudio(c *gin.Context) {
 	}
 
 	db := models.GetDB()
+	if isUserUsageLimitExceeded(db, currentUser) {
+		c.JSON(http.StatusForbidden, gin.H{"detail": "Transcription usage limit reached. Please contact an administrator."})
+		return
+	}
+
 	var settings models.Settings
 	db.First(&settings)
 
@@ -152,6 +195,26 @@ func uploadAudio(c *gin.Context) {
 		return
 	}
 
+	if tagIDsStr := strings.TrimSpace(c.PostForm("tag_ids")); tagIDsStr != "" {
+		var tagIDs []uint
+		if strings.HasPrefix(tagIDsStr, "[") {
+			_ = json.Unmarshal([]byte(tagIDsStr), &tagIDs)
+		} else {
+			for _, part := range strings.Split(tagIDsStr, ",") {
+				if id, err := strconv.ParseUint(strings.TrimSpace(part), 10, 64); err == nil {
+					tagIDs = append(tagIDs, uint(id))
+				}
+			}
+		}
+		if len(tagIDs) > 0 {
+			var tags []models.Tag
+			db.Where("id IN ? AND user_id = ?", tagIDs, currentUser.ID).Find(&tags)
+			if len(tags) > 0 {
+				_ = db.Model(&recording).Association("Tags").Replace(tags)
+			}
+		}
+	}
+
 	go services.ProcessSpeechmaticsJob(jobID, filePath)
 
 	c.JSON(http.StatusOK, gin.H{"message": "File uploaded successfully", "job_id": jobID})
@@ -168,17 +231,23 @@ type CompleteUploadRequest struct {
 	Filename    string `json:"filename" binding:"required"`
 	TotalChunks int    `json:"total_chunks" binding:"required"`
 	IsMedical   bool   `json:"is_medical"`
+	TagIDs      []uint `json:"tag_ids"`
 }
 
 
 func initChunkedUpload(c *gin.Context) {
-	_, err := getContextUser(c)
+	currentUser, err := getContextUser(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
 	db := models.GetDB()
+	if isUserUsageLimitExceeded(db, currentUser) {
+		c.JSON(http.StatusForbidden, gin.H{"detail": "Transcription usage limit reached. Please contact an administrator."})
+		return
+	}
+
 	var settings models.Settings
 	db.First(&settings)
 
@@ -348,6 +417,14 @@ func completeChunkedUpload(c *gin.Context) {
 		return
 	}
 
+	if len(req.TagIDs) > 0 {
+		var tags []models.Tag
+		db.Where("id IN ? AND user_id = ?", req.TagIDs, currentUser.ID).Find(&tags)
+		if len(tags) > 0 {
+			_ = db.Model(&recording).Association("Tags").Replace(tags)
+		}
+	}
+
 	go services.ProcessSpeechmaticsJob(jobID, filePath)
 
 	c.JSON(http.StatusOK, gin.H{"message": "File uploaded and stitched successfully", "job_id": jobID})
@@ -362,13 +439,65 @@ func getRecordings(c *gin.Context) {
 
 	search := c.Query("search")
 	isMedicalFilter := c.Query("is_medical")
+	tagIDsParam := strings.TrimSpace(c.Query("tag_ids"))
+	tagMode := c.DefaultQuery("tag_mode", "all")
+	includeSubtags := c.DefaultQuery("include_subtags", "true") != "false"
+	untaggedOnly := c.Query("untagged") == "true"
+
 	db := models.GetDB()
-	query := db.Model(&models.Recording{}).Where("user_id = ?", currentUser.ID)
+	_, tagByID, childrenMap := loadUserTagGraph(db, currentUser.ID)
+
+	query := db.Model(&models.Recording{}).Preload("Tags").Where(
+		"recordings.user_id = ? OR EXISTS (SELECT 1 FROM recording_accesses ra WHERE ra.recording_id = recordings.id AND ra.user_id = ?)",
+		currentUser.ID, currentUser.ID,
+	)
 
 	if isMedicalFilter == "true" {
 		query = query.Where("recordings.is_medical = ?", true)
 	} else if isMedicalFilter == "false" {
 		query = query.Where("recordings.is_medical = ?", false)
+	}
+
+	if untaggedOnly {
+		query = query.Where("NOT EXISTS (SELECT 1 FROM recording_tags WHERE recording_tags.recording_id = recordings.id)")
+	} else if tagIDsParam != "" {
+		var requestedTagIDs []uint
+		for _, part := range strings.Split(tagIDsParam, ",") {
+			if id, err := strconv.ParseUint(strings.TrimSpace(part), 10, 64); err == nil {
+				requestedTagIDs = append(requestedTagIDs, uint(id))
+			}
+		}
+
+		if len(requestedTagIDs) > 0 {
+			if tagMode == "any" {
+				expandedSet := make(map[uint]bool)
+				for _, tid := range requestedTagIDs {
+					if includeSubtags {
+						for _, dID := range getDescendantTagIDs(tid, childrenMap) {
+							expandedSet[dID] = true
+						}
+					} else {
+						expandedSet[tid] = true
+					}
+				}
+				expandedIDs := make([]uint, 0, len(expandedSet))
+				for id := range expandedSet {
+					expandedIDs = append(expandedIDs, id)
+				}
+				query = query.Where("EXISTS (SELECT 1 FROM recording_tags rt WHERE rt.recording_id = recordings.id AND rt.tag_id IN ?)", expandedIDs)
+			} else {
+				// "all" mode: recording must match every requested tag (or its descendants if includeSubtags)
+				for _, tid := range requestedTagIDs {
+					var matchIDs []uint
+					if includeSubtags {
+						matchIDs = getDescendantTagIDs(tid, childrenMap)
+					} else {
+						matchIDs = []uint{tid}
+					}
+					query = query.Where("EXISTS (SELECT 1 FROM recording_tags rt WHERE rt.recording_id = recordings.id AND rt.tag_id IN ?)", matchIDs)
+				}
+			}
+		}
 	}
 
 	if search != "" {
@@ -379,7 +508,7 @@ func getRecordings(c *gin.Context) {
 	}
 
 	var recordings []models.Recording
-	query.Order("created_at desc").Find(&recordings)
+	query.Order("recordings.created_at desc").Find(&recordings)
 
 	response := []RecordingOut{}
 	for _, r := range recordings {
@@ -390,6 +519,7 @@ func getRecordings(c *gin.Context) {
 			CreatedAt: r.CreatedAt.Format(time.RFC3339),
 			Duration:  r.Duration,
 			IsMedical: r.IsMedical,
+			Tags:      buildTagSummaries(r.Tags, tagByID),
 		})
 	}
 
@@ -404,12 +534,15 @@ func getRecentRecordings(c *gin.Context) {
 	}
 
 	db := models.GetDB()
+	_, tagByID, _ := loadUserTagGraph(db, currentUser.ID)
+
+	accessClause := "recordings.user_id = ? OR EXISTS (SELECT 1 FROM recording_accesses ra WHERE ra.recording_id = recordings.id AND ra.user_id = ?)"
 
 	var recordings []models.Recording
-	db.Where("user_id = ?", currentUser.ID).Order("created_at desc").Limit(5).Find(&recordings)
+	db.Preload("Tags").Where(accessClause, currentUser.ID, currentUser.ID).Order("created_at desc").Limit(5).Find(&recordings)
 
 	var totalRecs int64
-	db.Model(&models.Recording{}).Where("user_id = ?", currentUser.ID).Count(&totalRecs)
+	db.Model(&models.Recording{}).Where(accessClause, currentUser.ID, currentUser.ID).Count(&totalRecs)
 
 	var allRecordings []models.Recording
 	db.Where("user_id = ?", currentUser.ID).Find(&allRecordings)
@@ -431,6 +564,7 @@ func getRecentRecordings(c *gin.Context) {
 			CreatedAt: r.CreatedAt.Format(time.RFC3339),
 			Duration:  r.Duration,
 			IsMedical: r.IsMedical,
+			Tags:      buildTagSummaries(r.Tags, tagByID),
 		})
 	}
 
@@ -457,9 +591,38 @@ func getSpeechmaticsUsage(c *gin.Context) {
 	db.First(&settings)
 
 	apiKey := getSpeechmaticsKey(&settings)
+	isUnlimited := currentUser.Role == "admin"
 
-	limitHours := currentUser.TranscriptionLimitHours
-	limitSeconds := limitHours * 3600.0
+	respondUsage := func(totalSeconds float64) {
+		usedHours := math.Round((totalSeconds/3600.0)*100) / 100
+		if isUnlimited {
+			c.JSON(http.StatusOK, gin.H{
+				"used_seconds":  totalSeconds,
+				"limit_seconds": nil,
+				"used_hours":    usedHours,
+				"limit_hours":   nil,
+				"percentage":    0,
+				"is_unlimited":  true,
+			})
+			return
+		}
+		limitHours := currentUser.TranscriptionLimitHours
+		limitSeconds := limitHours * 3600.0
+		percentage := 0.0
+		if limitSeconds > 0 {
+			percentage = math.Min(math.Round((totalSeconds/limitSeconds)*1000)/10, 100.0)
+		} else if totalSeconds > 0 {
+			percentage = 100.0
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"used_seconds":  totalSeconds,
+			"limit_seconds": limitSeconds,
+			"used_hours":    usedHours,
+			"limit_hours":   limitHours,
+			"percentage":    percentage,
+			"is_unlimited":  false,
+		})
+	}
 
 	if apiKey != "" {
 		now := time.Now()
@@ -482,16 +645,7 @@ func getSpeechmaticsUsage(c *gin.Context) {
 				if err := json.Unmarshal(body, &data); err == nil {
 					if summary, ok := data["summary"].(map[string]interface{}); ok {
 						if durationHrs, ok := summary["duration_hrs"].(float64); ok {
-							usedHours := durationHrs
-							totalSeconds := usedHours * 3600.0
-							percentage := math.Min(math.Round((totalSeconds/limitSeconds)*1000)/10, 100.0)
-							c.JSON(http.StatusOK, gin.H{
-								"used_seconds":  totalSeconds,
-								"limit_seconds": limitSeconds,
-								"used_hours":    math.Round(usedHours*100) / 100,
-								"limit_hours":   limitHours,
-								"percentage":    percentage,
-							})
+							respondUsage(durationHrs * 3600.0)
 							return
 						}
 					}
@@ -501,23 +655,7 @@ func getSpeechmaticsUsage(c *gin.Context) {
 	}
 
 	// Fallback to local DB calculation
-	var allRecordings []models.Recording
-	db.Where("user_id = ?", currentUser.ID).Find(&allRecordings)
-	var totalSeconds float64
-	for _, r := range allRecordings {
-		if r.Duration != nil {
-			totalSeconds += *r.Duration
-		}
-	}
-
-	percentage := math.Min(math.Round((totalSeconds/limitSeconds)*1000)/10, 100.0)
-	c.JSON(http.StatusOK, gin.H{
-		"used_seconds":  totalSeconds,
-		"limit_seconds": limitSeconds,
-		"used_hours":    math.Round((totalSeconds/3600.0)*100) / 100,
-		"limit_hours":   limitHours,
-		"percentage":    percentage,
-	})
+	respondUsage(getUserUsedSeconds(db, currentUser.ID))
 }
 
 func getRecordingDetails(c *gin.Context) {
@@ -529,11 +667,17 @@ func getRecordingDetails(c *gin.Context) {
 
 	recordingID := c.Param("recording_id")
 	db := models.GetDB()
+	_, tagByID, _ := loadUserTagGraph(db, currentUser.ID)
+
+	if !canAccessRecording(db, recordingID, currentUser.ID) {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "Recording not found"})
+		return
+	}
 
 	var recording models.Recording
-	if err := db.Preload("Segments", func(db *gorm.DB) *gorm.DB {
+	if err := db.Preload("Tags").Preload("Segments", func(db *gorm.DB) *gorm.DB {
 		return db.Order("transcript_segments.start_time ASC")
-	}).Where("id = ? AND user_id = ?", recordingID, currentUser.ID).First(&recording).Error; err != nil {
+	}).Where("id = ?", recordingID).First(&recording).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Recording not found"})
 		return
 	}
@@ -558,6 +702,7 @@ func getRecordingDetails(c *gin.Context) {
 		"summary_md": recording.SummaryMD,
 		"is_medical": recording.IsMedical,
 		"segments":   segments,
+		"tags":       buildTagSummaries(recording.Tags, tagByID),
 	})
 }
 
@@ -619,6 +764,109 @@ func updateRecording(c *gin.Context) {
 		"id":         recording.ID,
 		"is_medical": recording.IsMedical,
 		"title":      recording.Title,
+	})
+}
+
+type SetRecordingTagsRequest struct {
+	TagIDs []uint `json:"tag_ids"`
+}
+
+func setRecordingTags(c *gin.Context) {
+	currentUser, err := getContextUser(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	recordingID := c.Param("recording_id")
+	db := models.GetDB()
+
+	var recording models.Recording
+	if err := db.Where("id = ? AND user_id = ?", recordingID, currentUser.ID).First(&recording).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "Recording not found"})
+		return
+	}
+
+	var req SetRecordingTagsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		return
+	}
+
+	var tags []models.Tag
+	if len(req.TagIDs) > 0 {
+		db.Where("id IN ? AND user_id = ?", req.TagIDs, currentUser.ID).Find(&tags)
+	}
+
+	if err := db.Model(&recording).Association("Tags").Replace(tags); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Failed to update recording tags"})
+		return
+	}
+
+	_, tagByID, _ := loadUserTagGraph(db, currentUser.ID)
+	c.JSON(http.StatusOK, gin.H{
+		"id":   recording.ID,
+		"tags": buildTagSummaries(tags, tagByID),
+	})
+}
+
+type BulkTagsRequest struct {
+	RecordingIDs []string `json:"recording_ids" binding:"required"`
+	TagIDs       []uint   `json:"tag_ids" binding:"required"`
+	Action       string   `json:"action" binding:"required"` // "add" or "remove"
+}
+
+func bulkUpdateRecordingTags(c *gin.Context) {
+	currentUser, err := getContextUser(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	var req BulkTagsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": err.Error()})
+		return
+	}
+
+	if req.Action != "add" && req.Action != "remove" {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "action must be 'add' or 'remove'"})
+		return
+	}
+
+	db := models.GetDB()
+	var recordings []models.Recording
+	db.Where("id IN ? AND user_id = ?", req.RecordingIDs, currentUser.ID).Find(&recordings)
+	if len(recordings) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "No matching recordings found"})
+		return
+	}
+
+	var tags []models.Tag
+	db.Where("id IN ? AND user_id = ?", req.TagIDs, currentUser.ID).Find(&tags)
+	if len(tags) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "No matching tags found"})
+		return
+	}
+
+	for i := range recordings {
+		if req.Action == "add" {
+			if err := db.Model(&recordings[i]).Association("Tags").Append(tags); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"detail": "Failed to add tags"})
+				return
+			}
+		} else {
+			if err := db.Model(&recordings[i]).Association("Tags").Delete(tags); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"detail": "Failed to remove tags"})
+				return
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":           "Bulk tag update completed",
+		"recordings_count":  len(recordings),
+		"tags_affected":     len(tags),
 	})
 }
 
@@ -781,4 +1029,193 @@ func deleteRecording(c *gin.Context) {
 	db.Delete(&recording)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Recording deleted successfully"})
+}
+
+func createMeetingInvite(c *gin.Context) {
+	currentUser, err := getContextUser(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	recordingID := c.Param("recording_id")
+	db := models.GetDB()
+
+	var recording models.Recording
+	if err := db.Where("id = ?", recordingID).First(&recording).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "Recording not found"})
+		return
+	}
+
+	if recording.UserID != currentUser.ID && currentUser.Role != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"detail": "Only the recording owner can create an invite link"})
+		return
+	}
+
+	var existing models.MeetingInvite
+	if err := db.Where("recording_id = ? AND created_by = ?", recordingID, currentUser.ID).First(&existing).Error; err == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"token":        existing.Token,
+			"recording_id": existing.RecordingID,
+		})
+		return
+	}
+
+	invite := models.MeetingInvite{
+		Token:       uuid.New().String(),
+		RecordingID: recordingID,
+		CreatedBy:   currentUser.ID,
+	}
+	if err := db.Create(&invite).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Failed to create invite link"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"token":        invite.Token,
+		"recording_id": invite.RecordingID,
+	})
+}
+
+func getMeetingInvite(c *gin.Context) {
+	token := c.Param("token")
+	db := models.GetDB()
+
+	var invite models.MeetingInvite
+	if err := db.Where("token = ?", token).First(&invite).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "Invalid or expired meeting invite link"})
+		return
+	}
+
+	var recording models.Recording
+	if err := db.Where("id = ?", invite.RecordingID).First(&recording).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "Meeting not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"token":        invite.Token,
+		"recording_id": recording.ID,
+		"title":        recording.Title,
+		"created_at":   recording.CreatedAt.Format(time.RFC3339),
+		"duration":     recording.Duration,
+		"is_medical":   recording.IsMedical,
+	})
+}
+
+type AcceptInviteRequest struct {
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Password string `json:"password" binding:"required"`
+}
+
+func acceptMeetingInvite(c *gin.Context) {
+	token := c.Param("token")
+	var input AcceptInviteRequest
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Username and password are required"})
+		return
+	}
+
+	username := strings.TrimSpace(input.Username)
+	if username == "" {
+		username = strings.TrimSpace(input.Email)
+	}
+	if username == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Username is required"})
+		return
+	}
+	if len(input.Password) < 4 {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Password must be at least 4 characters"})
+		return
+	}
+
+	db := models.GetDB()
+	var invite models.MeetingInvite
+	if err := db.Where("token = ?", token).First(&invite).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "Invalid or expired meeting invite link"})
+		return
+	}
+
+	var existing models.User
+	if err := db.Where("email = ?", username).First(&existing).Error; err == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Username already taken. Please choose another or sign in."})
+		return
+	}
+
+	hashedPassword, err := GetPasswordHash(input.Password)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Failed to hash password"})
+		return
+	}
+
+	newUser := models.User{
+		Email:          username,
+		HashedPassword: hashedPassword,
+		Role:           "user",
+		IsApproved:     true,
+	}
+	if err := db.Create(&newUser).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": err.Error()})
+		return
+	}
+
+	access := models.RecordingAccess{
+		RecordingID: invite.RecordingID,
+		UserID:      newUser.ID,
+	}
+	db.FirstOrCreate(&access, models.RecordingAccess{RecordingID: invite.RecordingID, UserID: newUser.ID})
+
+	jwtToken, err := CreateAccessToken(newUser.Email, newUser.Role)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Could not create token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"access_token": jwtToken,
+		"token_type":   "bearer",
+		"recording_id": invite.RecordingID,
+		"user": UserOut{
+			ID:                      newUser.ID,
+			Email:                   newUser.Email,
+			Role:                    newUser.Role,
+			IsApproved:              newUser.IsApproved,
+			TranscriptionLimitHours: newUser.TranscriptionLimitHours,
+		},
+	})
+}
+
+func joinMeetingInvite(c *gin.Context) {
+	currentUser, err := getContextUser(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	token := c.Param("token")
+	db := models.GetDB()
+
+	var invite models.MeetingInvite
+	if err := db.Where("token = ?", token).First(&invite).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "Invalid or expired meeting invite link"})
+		return
+	}
+
+	var recording models.Recording
+	if err := db.Where("id = ?", invite.RecordingID).First(&recording).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "Meeting not found"})
+		return
+	}
+
+	if recording.UserID != currentUser.ID {
+		db.FirstOrCreate(&models.RecordingAccess{}, models.RecordingAccess{
+			RecordingID: invite.RecordingID,
+			UserID:      currentUser.ID,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"recording_id": invite.RecordingID,
+	})
 }

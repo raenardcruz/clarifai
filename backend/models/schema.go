@@ -29,6 +29,20 @@ type Recording struct {
 	IsMedical         bool                `gorm:"default:false" json:"is_medical"`
 	CreatedAt         time.Time           `gorm:"autoCreateTime" json:"created_at"`
 	Segments          []TranscriptSegment `gorm:"foreignKey:RecordingID;constraint:OnDelete:CASCADE" json:"segments,omitempty"`
+	Tags              []Tag               `gorm:"many2many:recording_tags;constraint:OnDelete:CASCADE" json:"tags,omitempty"`
+}
+
+type Tag struct {
+	ID         uint        `gorm:"primaryKey" json:"id"`
+	UserID     uint        `gorm:"index;not null" json:"user_id"`
+	ParentID   *uint       `gorm:"index" json:"parent_id"`
+	Name       string      `gorm:"not null" json:"name"`
+	Color      string      `gorm:"default:'#3b82f6';not null" json:"color"`
+	ShareToken *string     `gorm:"uniqueIndex" json:"share_token,omitempty"`
+	CreatedAt  time.Time   `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt  time.Time   `gorm:"autoUpdateTime" json:"updated_at"`
+	Children   []Tag       `gorm:"foreignKey:ParentID" json:"children,omitempty"`
+	Recordings []Recording `gorm:"many2many:recording_tags;constraint:OnDelete:CASCADE" json:"-"`
 }
 
 type TranscriptSegment struct {
@@ -38,6 +52,21 @@ type TranscriptSegment struct {
 	EndTime     float64 `gorm:"not null" json:"end_time"`
 	Speaker     string  `gorm:"not null" json:"speaker"`
 	Text        string  `gorm:"not null" json:"text"`
+}
+
+type MeetingInvite struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	Token       string    `gorm:"uniqueIndex;not null" json:"token"`
+	RecordingID string    `gorm:"index;not null" json:"recording_id"`
+	CreatedBy   uint      `gorm:"not null" json:"created_by"`
+	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
+}
+
+type RecordingAccess struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	RecordingID string    `gorm:"uniqueIndex:idx_rec_user;not null" json:"recording_id"`
+	UserID      uint      `gorm:"uniqueIndex:idx_rec_user;not null" json:"user_id"`
+	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
 
 const DefaultMedicalSummaryPrompt = `Analyze the following medical or clinical encounter transcript and generate a structured Clinical / SOAP Note in clean Markdown:

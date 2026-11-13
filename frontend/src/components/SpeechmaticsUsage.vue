@@ -7,8 +7,12 @@
           <Activity size="20" stroke-width="2.2" />
         </div>
         <div class="header-info">
-          <span class="widget-label">SPEECHMATICS USAGE</span>
-          <div class="value-row">
+          <span class="widget-label">USAGE</span>
+          <div class="value-row" v-if="usageData.is_unlimited">
+            <span class="value-highlight">{{ usageData.used_hours }}</span>
+            <span class="value-limit">hrs used</span>
+          </div>
+          <div class="value-row" v-else>
             <span class="value-highlight">{{ usageData.used_hours }}</span>
             <span class="value-divider">/</span>
             <span class="value-limit">{{ usageData.limit_hours }} hrs</span>
@@ -16,7 +20,14 @@
         </div>
       </div>
       
-      <div class="progress-section">
+      <div class="progress-section" v-if="usageData.is_unlimited">
+        <div class="progress-footer-stats">
+          <span class="percentage-pill severity-normal">Unlimited (Admin)</span>
+          <span class="remaining-text">No usage cap</span>
+        </div>
+      </div>
+
+      <div class="progress-section" v-else>
         <div class="apple-track">
           <div 
             class="apple-fill" 
@@ -45,14 +56,20 @@
           <div class="dock-icon-circle">
             <Activity size="14" stroke-width="2.5" />
           </div>
-          <span class="dock-title">Speechmatics Transcription Limit</span>
+          <span class="dock-title">{{ usageData.is_unlimited ? 'Speechmatics Usage' : 'Speechmatics Transcription Limit' }}</span>
           <span class="dock-divider">•</span>
-          <span class="dock-detail">
+          <span class="dock-detail" v-if="usageData.is_unlimited">
+            <strong>{{ usageData.used_hours }}</strong> hrs used
+          </span>
+          <span class="dock-detail" v-else>
             <strong>{{ usageData.used_hours }}</strong> hrs of {{ usageData.limit_hours }} hrs used ({{ usageData.percentage }}%)
           </span>
         </div>
         
-        <div class="dock-right">
+        <div class="dock-right" v-if="usageData.is_unlimited">
+          <span class="dock-remaining">Unlimited (Admin)</span>
+        </div>
+        <div class="dock-right" v-else>
           <div class="dock-track">
             <div 
               class="dock-fill" 

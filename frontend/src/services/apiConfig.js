@@ -31,6 +31,19 @@ export function getApiBaseUrl() {
   return axios.defaults.baseURL || ''
 }
 
+export function getPublicBaseUrl() {
+  const origin = window.location.origin || ''
+  const isNativeShell = Capacitor.isNativePlatform() ||
+    origin.startsWith('notetaker') ||
+    origin.startsWith('capacitor')
+
+  if (isNativeShell) {
+    return (import.meta.env.VITE_APP_URL || 'https://clarifai.raenardcruz.com').replace(/\/+$/, '')
+  }
+
+  return (origin || import.meta.env.VITE_APP_URL || 'https://clarifai.raenardcruz.com').replace(/\/+$/, '')
+}
+
 export async function setApiBaseUrl(url) {
   const cleanUrl = (url || '').trim().replace(/\/+$/, '')
   axios.defaults.baseURL = cleanUrl

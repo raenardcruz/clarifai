@@ -91,6 +91,7 @@ func main() {
 		api.SetupUsersRoutes(apiGroup.Group("/users"))
 		api.SetupSettingsRoutes(apiGroup.Group("/settings"))
 		api.SetupRecordingsRoutes(apiGroup.Group("/recordings"))
+		api.SetupTagsRoutes(apiGroup.Group("/tags"))
 	}
 
 	port := os.Getenv("PORT")

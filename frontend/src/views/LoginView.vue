@@ -80,13 +80,14 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { Capacitor } from '@capacitor/core'
 import { useAuthStore } from '../stores/auth'
 import axios from 'axios'
 import { Sparkles, Mail, Lock, ArrowRight, Loader2, Eye, EyeOff, RotateCw } from '@lucide/vue'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
 const isIosApp = computed(() => {
@@ -125,7 +126,8 @@ const handleLogin = async () => {
     const userRes = await axios.get('/api/auth/me')
     
     authStore.setAuth(token, userRes.data)
-    router.push('/')
+    const redirectPath = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/') ? route.query.redirect : '/'
+    router.push(redirectPath)
   } catch (err) {
     if (err.response?.status === 400) {
       error.value = err.response.data.detail
