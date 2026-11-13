@@ -14,7 +14,55 @@
 
         <div class="title-row">
           <div class="title-meta-block">
-            <h1 class="page-title">{{ recording.title }}</h1>
+            <div v-if="isEditingTitle" class="title-edit-wrapper">
+              <input
+                ref="titleInputRef"
+                v-model="editedTitle"
+                type="text"
+                class="page-title-input"
+                placeholder="Recording title..."
+                :disabled="isSavingTitle"
+                @keydown.enter.prevent="saveTitle"
+                @keydown.escape.prevent="cancelEditTitle"
+                @blur="saveTitle"
+                aria-label="Edit recording title"
+              />
+              <div class="title-edit-actions">
+                <button
+                  type="button"
+                  class="title-action-btn save"
+                  :disabled="isSavingTitle"
+                  @mousedown.prevent="saveTitle"
+                  title="Save title (Enter)"
+                  aria-label="Save title"
+                >
+                  <Loader2 v-if="isSavingTitle" size="16" class="animate-spin" />
+                  <Check v-else size="16" />
+                </button>
+                <button
+                  type="button"
+                  class="title-action-btn cancel"
+                  :disabled="isSavingTitle"
+                  @mousedown.prevent="cancelEditTitle"
+                  title="Cancel (Esc)"
+                  aria-label="Cancel editing title"
+                >
+                  <X size="16" />
+                </button>
+              </div>
+            </div>
+            <div v-else class="title-display-wrapper" @click="startEditingTitle" title="Click to edit title">
+              <h1 class="page-title">{{ recording.title }}</h1>
+              <button
+                type="button"
+                class="edit-title-btn"
+                @click.stop="startEditingTitle"
+                title="Edit title"
+                aria-label="Edit title"
+              >
+                <Pencil size="15" />
+              </button>
+            </div>
             
             <div class="meta-pill-group">
               <span class="meta-pill">
@@ -43,6 +91,18 @@
                 <span>{{ formattedStatus }}</span>
               </span>
             </div>
+
+            <!-- DAM Tags Row -->
+            <div class="recording-tags-bar">
+              <TagPicker
+                :model-value="recordingTagIds"
+                placeholder="Add tags..."
+                :show-path="true"
+                :clickable-badges="true"
+                @update:model-value="handleTagsChange"
+                @badge-click="(t) => router.push({ path: '/recordings', query: { tags: String(t.id) } })"
+              />
+            </div>
           </div>
 
           
@@ -51,6 +111,11 @@
             <button class="apple-btn-secondary" @click="shareLink" title="Share public link">
               <Share2 size="15" />
               <span>Share</span>
+            </button>
+
+            <button class="apple-btn-secondary" @click="inviteLink" title="Copy meeting invite link">
+              <UserPlus size="15" />
+              <span>Invite</span>
             </button>
             
             <a v-if="!isIosApp" :href="`/api/recordings/${recording.id}/download/${activeTab}`" class="no-underline">
@@ -250,8 +315,9 @@
                 <textarea 
                   class="segment-textarea" 
                   v-model="segment.text" 
+                  v-auto-grow
                   @blur="updateSegment(segment)" 
-                  rows="2"
+                  rows="1"
                   @input="autoGrow"
                 ></textarea>
               </div>
@@ -361,21 +427,24 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import moment from 'moment'
 import { marked } from 'marked'
 import { useToast } from 'primevue/usetoast'
 import { 
-  Calendar, Clock, Share2, Download, Wand2, Sparkles, Loader2, 
+  Calendar, Clock, Share2, UserPlus, Download, Wand2, Sparkles, Loader2, 
   Pencil, Trash2, UserCheck, Printer, ChevronLeft, Users, 
-  FileText, Copy, Check, Search, Stethoscope, ArrowUpDown 
+  FileText, Copy, Check, Search, Stethoscope, ArrowUpDown, X 
 } from '@lucide/vue'
 import { useIntervalFn, useTitle } from '@vueuse/core'
 import Dialog from 'primevue/dialog'
 import { Capacitor } from '@capacitor/core'
 import SpeechmaticsUsage from '../components/SpeechmaticsUsage.vue'
+import TagPicker from '../components/tags/TagPicker.vue'
+import { useTagsStore } from '../stores/tags'
+import { getPublicBaseUrl } from '../services/apiConfig'
 
 const route = useRoute()
 const router = useRouter()
@@ -386,6 +455,19 @@ const isIosApp = computed(() => {
 })
 
 const recording = ref(null)
+const tagsStore = useTagsStore()
+
+const recordingTagIds = computed(() => (recording.value?.tags || []).map((t) => t.id))
+
+const handleTagsChange = async (nextIds) => {
+  if (!recording.value) return
+  try {
+    const updatedTags = await tagsStore.setRecordingTags(recording.value.id, nextIds)
+    recording.value.tags = updatedTags
+  } catch (err) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to update tags', life: 3000 })
+  }
+}
 const loadError = ref(null)
 const activeTab = ref('summary')
 const isGenerating = ref(false)
@@ -396,6 +478,57 @@ const transcriptSortOrder = ref('asc')
 const specialInstruction = ref('')
 const copiedSummary = ref(false)
 const transcriptSearch = ref('')
+
+const isEditingTitle = ref(false)
+const editedTitle = ref('')
+const isSavingTitle = ref(false)
+const titleInputRef = ref(null)
+
+const startEditingTitle = async () => {
+  if (!recording.value) return
+  editedTitle.value = recording.value.title || ''
+  isEditingTitle.value = true
+  await nextTick()
+  if (titleInputRef.value) {
+    titleInputRef.value.focus()
+    titleInputRef.value.select()
+  }
+}
+
+const cancelEditTitle = () => {
+  isEditingTitle.value = false
+  editedTitle.value = ''
+}
+
+const saveTitle = async () => {
+  if (!isEditingTitle.value || isSavingTitle.value || !recording.value) return
+
+  const trimmedTitle = editedTitle.value.trim()
+  if (!trimmedTitle || trimmedTitle === recording.value.title) {
+    isEditingTitle.value = false
+    return
+  }
+
+  isSavingTitle.value = true
+  try {
+    const res = await axios.patch(`/api/recordings/${recording.value.id}`, {
+      title: trimmedTitle
+    })
+    recording.value.title = res.data?.title || trimmedTitle
+    isEditingTitle.value = false
+    toast.add({ severity: 'success', summary: 'Updated', detail: 'Recording title updated.', life: 3000 })
+  } catch (e) {
+    console.error('Failed to update title', e)
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: e.response?.data?.detail || 'Failed to update recording title.',
+      life: 4000
+    })
+  } finally {
+    isSavingTitle.value = false
+  }
+}
 
 const title = computed(() => recording.value ? `${recording.value.title} — ClarifAi` : 'ClarifAi')
 useTitle(title)
@@ -417,9 +550,38 @@ const applyPreset = (text) => {
   }
 }
 
+const resizeTextarea = (el) => {
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${el.scrollHeight}px`
+}
+
+const vAutoGrow = {
+  mounted(el) {
+    nextTick(() => resizeTextarea(el))
+    if (typeof ResizeObserver !== 'undefined') {
+      let lastWidth = el.clientWidth
+      const observer = new ResizeObserver(() => {
+        if (el.clientWidth !== lastWidth) {
+          lastWidth = el.clientWidth
+          resizeTextarea(el)
+        }
+      })
+      observer.observe(el)
+      el._autoGrowObserver = observer
+    }
+  },
+  updated(el) {
+    nextTick(() => resizeTextarea(el))
+  },
+  unmounted(el) {
+    el._autoGrowObserver?.disconnect()
+    delete el._autoGrowObserver
+  }
+}
+
 const autoGrow = (e) => {
-  e.target.style.height = 'auto'
-  e.target.style.height = (e.target.scrollHeight) + 'px'
+  resizeTextarea(e.target)
 }
 
 const speakerCount = computed(() => {
@@ -621,14 +783,7 @@ const identifySpeakers = async () => {
 }
 
 const shareLink = () => {
-  const origin = window.location.origin || ''
-  const isLocalOrNative = Capacitor.isNativePlatform() || 
-    origin.includes('localhost') || 
-    origin.startsWith('notetaker') || 
-    origin.startsWith('capacitor')
-    
-  const publicBase = import.meta.env.VITE_APP_URL || (isLocalOrNative ? 'https://clarifai.raenardcruz.com' : origin)
-  const url = `${publicBase.replace(/\/+$/, '')}/share/${recording.value.id}`
+  const url = `${getPublicBaseUrl()}/share/${recording.value.id}`
 
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(url)
@@ -639,6 +794,30 @@ const shareLink = () => {
     detail: 'Public sharing link copied to clipboard!', 
     life: 3500 
   })
+}
+
+const inviteLink = async () => {
+  try {
+    const res = await axios.post(`/api/recordings/${recording.value.id}/invite`)
+    const url = `${getPublicBaseUrl()}/invite/${res.data.token}`
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url)
+    }
+    toast.add({
+      severity: 'success',
+      summary: 'Copied Invite Link',
+      detail: 'Meeting invite link copied! Recipients will be prompted to create a username and password.',
+      life: 4000
+    })
+  } catch (e) {
+    console.error("Failed to create invite link", e)
+    toast.add({
+      severity: 'error',
+      summary: 'Invite Error',
+      detail: e.response?.data?.detail || 'Failed to create meeting invite link.',
+      life: 4000
+    })
+  }
 }
 
 const printSummary = () => {
@@ -757,13 +936,131 @@ const getSpeakerColor = (name) => {
   flex-wrap: wrap;
 }
 
+.title-meta-block {
+  flex: 1;
+  min-width: 240px;
+}
+
+.title-display-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  padding: 0.15rem 0.45rem;
+  margin-left: -0.45rem;
+  transition: background-color 0.15s ease;
+  max-width: 100%;
+}
+
+.title-display-wrapper:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
 .page-title {
   font-size: 2.25rem;
   font-weight: 700;
   letter-spacing: -0.03em;
   color: var(--text-primary);
-  margin-bottom: 0.75rem;
+  margin: 0;
   line-height: 1.2;
+  word-break: break-word;
+}
+
+.edit-title-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  flex-shrink: 0;
+  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.title-display-wrapper:hover .edit-title-btn,
+.edit-title-btn:focus-visible {
+  opacity: 1;
+}
+
+.edit-title-btn:hover {
+  background: rgba(0, 0, 0, 0.07);
+  color: var(--text-primary);
+}
+
+.title-edit-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  width: 100%;
+  max-width: 680px;
+}
+
+.page-title-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+  font-family: inherit;
+  line-height: 1.2;
+  background: var(--white);
+  border: 1.5px solid var(--apple-blue);
+  border-radius: var(--radius-md);
+  padding: 0.25rem 0.65rem;
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.18);
+  outline: none;
+}
+
+.title-edit-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.title-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: var(--white);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.title-action-btn.save {
+  color: var(--apple-blue);
+}
+
+.title-action-btn.save:hover:not(:disabled) {
+  background: rgba(0, 113, 227, 0.08);
+  border-color: rgba(0, 113, 227, 0.25);
+}
+
+.title-action-btn.cancel {
+  color: var(--text-secondary);
+}
+
+.title-action-btn.cancel:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--text-primary);
+}
+
+.title-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .meta-pill-group {
@@ -1365,7 +1662,8 @@ const getSpeakerColor = (name) => {
   width: 100%;
   border: none;
   background: transparent;
-  resize: vertical;
+  resize: none;
+  overflow: hidden;
   font-family: inherit;
   font-size: 0.95rem;
   color: #2c2c2e;
@@ -1373,7 +1671,7 @@ const getSpeakerColor = (name) => {
   outline: none;
   padding: 0.25rem;
   border-radius: var(--radius-xs);
-  transition: var(--transition-fast);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .segment-textarea:focus {
@@ -1479,8 +1777,13 @@ const getSpeakerColor = (name) => {
     padding: 1.5rem 1rem;
   }
   
-  .page-title {
+  .page-title,
+  .page-title-input {
     font-size: 1.75rem;
+  }
+
+  .edit-title-btn {
+    opacity: 0.75;
   }
 
   .apple-doc-card {
@@ -1510,5 +1813,9 @@ const getSpeakerColor = (name) => {
   .transcript-search-input {
     width: 100%;
   }
+}
+
+.recording-tags-bar {
+  margin-top: 0.75rem;
 }
 </style>

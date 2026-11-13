@@ -44,6 +44,55 @@
         <span class="nav-text">All Recordings</span>
       </router-link>
 
+      <!-- DAM-Style Tag Explorer -->
+      <div class="tags-nav-section">
+        <div class="nav-section-header-row mt-6">
+          <button type="button" class="section-collapse-btn" @click="isTagsSectionOpen = !isTagsSectionOpen">
+            <ChevronDown v-if="isTagsSectionOpen" size="12" />
+            <ChevronRight v-else size="12" />
+            <span>TAGS</span>
+          </button>
+          <button
+            type="button"
+            class="tag-manage-btn"
+            title="Manage & create tags"
+            @click="openTagManager(null, null)"
+          >
+            <Plus size="13" />
+          </button>
+        </div>
+
+        <div v-if="isTagsSectionOpen" class="tags-tree-container">
+          <div v-if="tagsStore.tree.length === 0" class="tags-empty-hint" @click="openTagManager(null, null)">
+            + Create your first tag
+          </div>
+
+          <TagTreeNode
+            v-for="node in tagsStore.tree"
+            :key="node.id"
+            :node="node"
+            :depth="0"
+            :selected-ids="activeTagIds"
+            :expanded-ids="expandedTagIds"
+            @select="handleTagSelect"
+            @toggle-expand="toggleExpandTag"
+            @add-child="(parent) => openTagManager(null, parent)"
+            @edit="(tag) => openTagManager(tag, null)"
+            @share="handleShareTag"
+          />
+
+          <div
+            class="untagged-nav-item"
+            :class="{ 'is-selected': isUntaggedActive }"
+            @click="selectUntagged"
+          >
+            <TagIcon size="13" />
+            <span class="untagged-label">Untagged</span>
+            <span v-if="tagsStore.untaggedCount > 0" class="untagged-count">{{ tagsStore.untaggedCount }}</span>
+          </div>
+        </div>
+      </div>
+
       <template v-if="authStore.isAdmin">
         <div class="nav-section-label mt-6">MANAGEMENT</div>
 
@@ -91,17 +140,29 @@
     <!-- Teleport Modal out of sidebar to avoid z-index issues -->
     <Teleport to="body">
       <NewRecordingModal v-if="isRecordingModalOpen" @close="isRecordingModalOpen = false" />
+      <TagManagerModal
+        v-if="isTagManagerOpen"
+        :initial-edit-tag="tagManagerEditTarget"
+        :initial-parent-tag="tagManagerParentTarget"
+        @close="isTagManagerOpen = false"
+      />
     </Teleport>
   </aside>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Capacitor } from '@capacitor/core'
 import { useAuthStore } from '../stores/auth'
+import { useTagsStore } from '../stores/tags'
 import { isSidebarOpen } from '../stores/layout'
-import { LayoutDashboard, Mic, Settings, Users, Plus, Sparkles, LogOut, RotateCw } from '@lucide/vue'
+import { getPublicBaseUrl } from '../services/apiConfig'
+import { useToast } from 'primevue/usetoast'
+import { LayoutDashboard, Mic, Settings, Users, Plus, Sparkles, LogOut, RotateCw, ChevronDown, ChevronRight, Tag as TagIcon } from '@lucide/vue'
 import NewRecordingModal from './NewRecordingModal.vue'
+import TagTreeNode from './tags/TagTreeNode.vue'
+import TagManagerModal from './tags/TagManagerModal.vue'
 
 const isIosApp = computed(() => {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios'
@@ -118,7 +179,102 @@ const handleReload = () => {
 }
 
 const authStore = useAuthStore()
+const tagsStore = useTagsStore()
+const toast = useToast()
+const route = useRoute()
+const router = useRouter()
+
 const isRecordingModalOpen = ref(false)
+const isTagsSectionOpen = ref(true)
+const expandedTagIds = ref(new Set())
+const isTagManagerOpen = ref(false)
+const tagManagerEditTarget = ref(null)
+const tagManagerParentTarget = ref(null)
+
+onMounted(() => {
+  if (authStore.isAuthenticated) {
+    tagsStore.fetchTags()
+  }
+})
+
+const activeTagIds = computed(() => {
+  if (route.name !== 'recordings' || !route.query.tags) return []
+  return String(route.query.tags)
+    .split(',')
+    .map((v) => Number(v))
+    .filter((n) => !Number.isNaN(n) && n > 0)
+})
+
+const isUntaggedActive = computed(() => {
+  return route.name === 'recordings' && route.query.untagged === '1'
+})
+
+const toggleExpandTag = (tagId) => {
+  const next = new Set(expandedTagIds.value)
+  if (next.has(tagId)) next.delete(tagId)
+  else next.add(tagId)
+  expandedTagIds.value = next
+}
+
+const handleTagSelect = ({ tag, event }) => {
+  const isMulti = event && (event.metaKey || event.ctrlKey || event.shiftKey)
+  let nextIds = [tag.id]
+  if (isMulti) {
+    const current = new Set(activeTagIds.value)
+    if (current.has(tag.id)) current.delete(tag.id)
+    else current.add(tag.id)
+    nextIds = Array.from(current)
+  }
+
+  const query = { ...route.query }
+  delete query.untagged
+  if (nextIds.length > 0) {
+    query.tags = nextIds.join(',')
+  } else {
+    delete query.tags
+  }
+  router.push({ path: '/recordings', query })
+}
+
+const selectUntagged = () => {
+  const query = { ...route.query }
+  delete query.tags
+  if (isUntaggedActive.value) {
+    delete query.untagged
+  } else {
+    query.untagged = '1'
+  }
+  router.push({ path: '/recordings', query })
+}
+
+const openTagManager = (editTag, parentTag) => {
+  tagManagerEditTarget.value = editTag
+  tagManagerParentTarget.value = parentTag
+  isTagManagerOpen.value = true
+}
+
+const handleShareTag = async (tag) => {
+  try {
+    const token = await tagsStore.shareTag(tag.id)
+    const url = `${getPublicBaseUrl()}/share/tag/${token}`
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(url)
+    }
+    toast.add({
+      severity: 'success',
+      summary: 'Tag Share Link Copied',
+      detail: `Read-only link for "${tag.name}" copied to clipboard.`,
+      life: 3500,
+    })
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Share Failed',
+      detail: err.response?.data?.detail || 'Could not generate tag share link.',
+      life: 3500,
+    })
+  }
+}
 </script>
 
 <style scoped>
@@ -429,6 +585,108 @@ const isRecordingModalOpen = ref(false)
 .logout-icon-btn:hover {
   background: rgba(255, 59, 48, 0.1);
   color: var(--apple-red);
+}
+
+.tags-nav-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.nav-section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.5rem 0.25rem 0.75rem;
+}
+
+.section-collapse-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: none;
+  background: transparent;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  padding: 0;
+}
+
+.tag-manage-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.tag-manage-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text-primary);
+}
+
+.tags-tree-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.tags-empty-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  padding: 0.45rem 0.85rem;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.tags-empty-hint:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--apple-blue);
+}
+
+.untagged-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.38rem 0.65rem 0.38rem 1.85rem;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  color: #64748b;
+  cursor: pointer;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.untagged-nav-item:hover {
+  background: rgba(0, 0, 0, 0.045);
+  color: #0f172a;
+}
+
+.untagged-nav-item.is-selected {
+  background: rgba(59, 130, 246, 0.12);
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.untagged-label {
+  flex: 1;
+}
+
+.untagged-count {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+  background: rgba(0, 0, 0, 0.05);
+  padding: 0.08rem 0.4rem;
+  border-radius: 9999px;
 }
 
 @media (max-width: 768px) {

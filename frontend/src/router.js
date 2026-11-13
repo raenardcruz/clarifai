@@ -7,13 +7,17 @@ import DashboardView from './views/DashboardView.vue'
 import RecordingsView from './views/RecordingsView.vue'
 import RecordingShowView from './views/RecordingShowView.vue'
 import SharedRecordingView from './views/SharedRecordingView.vue'
+import SharedTagView from './views/SharedTagView.vue'
+import MeetingInviteView from './views/MeetingInviteView.vue'
 import SettingsView from './views/SettingsView.vue'
 import UsersView from './views/UsersView.vue'
 
 const routes = [
   { path: '/login', name: 'login', component: LoginView, meta: { requiresAuth: false } },
   { path: '/register', name: 'register', component: RegisterView, meta: { requiresAuth: false } },
+  { path: '/share/tag/:token', name: 'share-tag', component: SharedTagView, meta: { requiresAuth: false } },
   { path: '/share/:id', name: 'share', component: SharedRecordingView, meta: { requiresAuth: false } },
+  { path: '/invite/:token', name: 'meeting-invite', component: MeetingInviteView, meta: { requiresAuth: false } },
   { path: '/', name: 'dashboard', component: DashboardView, meta: { requiresAuth: true } },
   { path: '/recordings', name: 'recordings', component: RecordingsView, meta: { requiresAuth: true } },
   { path: '/recordings/:id', name: 'recording-show', component: RecordingShowView, meta: { requiresAuth: true } },

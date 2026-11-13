@@ -103,7 +103,7 @@ func InitDB() {
 	// Migrate legacy GORM column 'a_iprovider' to 'ai_provider' if it was created
 	_ = DB.Exec("DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='settings' AND column_name='a_iprovider') AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='settings' AND column_name='ai_provider') THEN ALTER TABLE settings RENAME COLUMN a_iprovider TO ai_provider; END IF; END $$;").Error
 
-	err = DB.AutoMigrate(&User{}, &Recording{}, &TranscriptSegment{}, &Settings{})
+	err = DB.AutoMigrate(&User{}, &Recording{}, &TranscriptSegment{}, &Settings{}, &Tag{}, &MeetingInvite{}, &RecordingAccess{})
 	if err != nil {
 		log.Fatalf("Failed to run AutoMigration: %v", err)
 	}

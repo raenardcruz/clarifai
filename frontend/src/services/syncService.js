@@ -140,7 +140,8 @@ export async function syncSingleRecording(recording, onProgress = null) {
       upload_id: uploadId,
       filename: recording.filename || `Recording_${recording.id}.m4a`,
       total_chunks: totalChunks,
-      is_medical: !!recording.isMedical
+      is_medical: !!recording.isMedical,
+      tag_ids: recording.tagIds || []
     })
 
     const jobId = completeRes.data.job_id

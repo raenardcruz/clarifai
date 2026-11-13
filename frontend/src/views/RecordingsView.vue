@@ -80,8 +80,19 @@
         </div>
 
 
-        <!-- Right Side: Sort & View Toggle -->
+        <!-- Right Side: Bulk Select, Sort & View Toggle -->
         <div class="toolbar-right">
+          <button
+            type="button"
+            class="bulk-toggle-btn"
+            :class="{ active: bulkSelectMode }"
+            @click="toggleBulkMode"
+            title="Select multiple recordings to bulk-tag"
+          >
+            <CheckSquare size="15" />
+            <span>{{ bulkSelectMode ? 'Done' : 'Select' }}</span>
+          </button>
+
           <!-- Sort Selector -->
           <div class="sort-selector">
             <span class="sort-label">Sort:</span>
@@ -111,6 +122,112 @@
               <List size="16" />
             </button>
           </div>
+        </div>
+      </div>
+
+      <!-- DAM Tag Filter Bar -->
+      <div class="tag-filter-bar" v-if="activeTagIds.length > 0 || isUntaggedFilter || tagsStore.tags.length > 0">
+        <div class="tag-filter-left">
+          <span class="tag-filter-label">
+            <TagIcon size="13" />
+            <span>Tags:</span>
+          </span>
+
+          <span v-if="isUntaggedFilter" class="untagged-active-pill">
+            <span>Untagged only</span>
+            <button type="button" class="clear-mini-chip" @click="clearTagFilters">×</button>
+          </span>
+
+          <div v-else class="tag-filter-picker-wrap">
+            <TagPicker
+              :model-value="activeTagIds"
+              placeholder="Filter by tags..."
+              :show-path="true"
+              @update:model-value="setActiveTagFilter"
+            />
+          </div>
+        </div>
+
+        <div class="tag-filter-controls" v-if="activeTagIds.length > 0 || isUntaggedFilter">
+          <div v-if="activeTagIds.length > 1" class="mode-toggle-group">
+            <button
+              type="button"
+              class="mini-mode-btn"
+              :class="{ active: tagMode === 'all' }"
+              @click="tagMode = 'all'"
+              title="Recording must have all selected tags"
+            >
+              Match All
+            </button>
+            <button
+              type="button"
+              class="mini-mode-btn"
+              :class="{ active: tagMode === 'any' }"
+              @click="tagMode = 'any'"
+              title="Recording can have any selected tag"
+            >
+              Match Any
+            </button>
+          </div>
+
+          <label v-if="activeTagIds.length > 0" class="subtags-checkbox-label">
+            <input type="checkbox" v-model="includeSubtags" />
+            <span>Include sub-tags</span>
+          </label>
+
+          <button
+            v-if="activeTagIds.length === 1"
+            type="button"
+            class="share-tag-btn"
+            @click="shareActiveTag"
+            title="Copy read-only public link for this tag"
+          >
+            <Share2 size="13" />
+            <span>Share Tag</span>
+          </button>
+
+          <button type="button" class="clear-tags-btn" @click="clearTagFilters">
+            Clear
+          </button>
+        </div>
+      </div>
+
+      <!-- Bulk Tagging Action Bar -->
+      <div class="bulk-action-bar" v-if="bulkSelectMode">
+        <div class="bulk-left">
+          <span class="bulk-count">{{ selectedRecordingIds.length }} selected</span>
+          <button type="button" class="bulk-link-btn" @click="selectAllVisible">
+            Select All ({{ filteredRecordings.length }})
+          </button>
+          <button v-if="selectedRecordingIds.length > 0" type="button" class="bulk-link-btn" @click="selectedRecordingIds = []">
+            Deselect
+          </button>
+        </div>
+
+        <div class="bulk-right" v-if="selectedRecordingIds.length > 0">
+          <div class="bulk-picker-wrap">
+            <TagPicker
+              v-model="bulkTagIds"
+              placeholder="Choose tags..."
+              :show-path="true"
+            />
+          </div>
+          <button
+            type="button"
+            class="bulk-apply-btn"
+            :disabled="bulkTagIds.length === 0 || bulkUpdating"
+            @click="applyBulkTags('add')"
+          >
+            Add Tags
+          </button>
+          <button
+            type="button"
+            class="bulk-remove-btn"
+            :disabled="bulkTagIds.length === 0 || bulkUpdating"
+            @click="applyBulkTags('remove')"
+          >
+            Remove Tags
+          </button>
         </div>
       </div>
 
@@ -213,6 +330,9 @@
           v-for="recording in filteredRecordings" 
           :key="recording.id" 
           :recording="recording" 
+          :selectable="bulkSelectMode"
+          :selected="selectedRecordingIds.includes(recording.id)"
+          @toggle-select="toggleBulkSelect"
           @refresh="fetchRecordings"
         />
       </div>
@@ -337,17 +457,21 @@ import { useToast } from 'primevue/usetoast'
 import Dialog from 'primevue/dialog'
 import axios from 'axios'
 import moment from 'moment'
-import { Loader2, Mic, Plus, LayoutGrid, List, ChevronRight, Stethoscope, HardDrive, RefreshCw, Trash2 } from '@lucide/vue'
+import { Loader2, Mic, Plus, LayoutGrid, List, ChevronRight, Stethoscope, HardDrive, RefreshCw, Trash2, Tag as TagIcon, CheckSquare, Share2 } from '@lucide/vue'
 import RecordingCard from '../components/RecordingCard.vue'
 import OfflineRecordingCard from '../components/OfflineRecordingCard.vue'
 import NewRecordingModal from '../components/NewRecordingModal.vue'
 import SpeechmaticsUsage from '../components/SpeechmaticsUsage.vue'
+import TagPicker from '../components/tags/TagPicker.vue'
 import { useOfflineRecordingsStore } from '../stores/offlineRecordings'
+import { useTagsStore } from '../stores/tags'
+import { getPublicBaseUrl } from '../services/apiConfig'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const offlineStore = useOfflineRecordingsStore()
+const tagsStore = useTagsStore()
 const recordings = ref([])
 const loading = ref(true)
 const isRecordingModalOpen = ref(false)
@@ -356,6 +480,106 @@ const sortBy = ref('newest')
 const viewMode = ref('grid')
 const showClearAllOfflineDialog = ref(false)
 const isClearingOffline = ref(false)
+
+// Tag Filter & Bulk Tagging state
+const tagMode = ref('all')
+const includeSubtags = ref(true)
+const bulkSelectMode = ref(false)
+const selectedRecordingIds = ref([])
+const bulkTagIds = ref([])
+const bulkUpdating = ref(false)
+
+const activeTagIds = computed(() => {
+  if (!route.query.tags) return []
+  return String(route.query.tags)
+    .split(',')
+    .map((v) => Number(v))
+    .filter((n) => !Number.isNaN(n) && n > 0)
+})
+
+const isUntaggedFilter = computed(() => route.query.untagged === '1')
+
+const setActiveTagFilter = (ids) => {
+  const query = { ...route.query }
+  delete query.untagged
+  if (ids.length > 0) {
+    query.tags = ids.join(',')
+  } else {
+    delete query.tags
+  }
+  router.replace({ query })
+}
+
+const clearTagFilters = () => {
+  const query = { ...route.query }
+  delete query.tags
+  delete query.untagged
+  router.replace({ query })
+}
+
+const shareActiveTag = async () => {
+  if (activeTagIds.value.length !== 1) return
+  const tagId = activeTagIds.value[0]
+  const tag = tagsStore.tagMap.get(tagId)
+  try {
+    const token = await tagsStore.shareTag(tagId)
+    const url = `${getPublicBaseUrl()}/share/tag/${token}`
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(url)
+    }
+    toast.add({
+      severity: 'success',
+      summary: 'Tag Share Link Copied',
+      detail: `Read-only link for "${tag?.name || 'tag'}" copied to clipboard.`,
+      life: 3500,
+    })
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Share Failed',
+      detail: err.response?.data?.detail || 'Could not generate tag share link.',
+      life: 3500,
+    })
+  }
+}
+
+const toggleBulkMode = () => {
+  bulkSelectMode.value = !bulkSelectMode.value
+  if (!bulkSelectMode.value) {
+    selectedRecordingIds.value = []
+    bulkTagIds.value = []
+  }
+}
+
+const toggleBulkSelect = (recId) => {
+  const idx = selectedRecordingIds.value.indexOf(recId)
+  if (idx === -1) selectedRecordingIds.value.push(recId)
+  else selectedRecordingIds.value.splice(idx, 1)
+}
+
+const selectAllVisible = () => {
+  selectedRecordingIds.value = filteredRecordings.value.map((r) => r.id)
+}
+
+const applyBulkTags = async (action) => {
+  if (selectedRecordingIds.value.length === 0 || bulkTagIds.value.length === 0 || bulkUpdating.value) return
+  bulkUpdating.value = true
+  try {
+    await tagsStore.bulkUpdateTags(selectedRecordingIds.value, bulkTagIds.value, action)
+    toast.add({
+      severity: 'success',
+      summary: action === 'add' ? 'Tags Added' : 'Tags Removed',
+      detail: `Updated ${selectedRecordingIds.value.length} recording(s).`,
+      life: 2500,
+    })
+    await fetchRecordings()
+    bulkTagIds.value = []
+  } catch (err) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Bulk tag update failed.', life: 3500 })
+  } finally {
+    bulkUpdating.value = false
+  }
+}
 
 const handleClearAllOffline = async () => {
   isClearingOffline.value = true
@@ -384,9 +608,18 @@ const handleClearAllOffline = async () => {
 const fetchRecordings = async () => {
   loading.value = true
   try {
-    const res = await axios.get('/api/recordings', {
-      params: { search: route.query.search || undefined }
-    })
+    const params = {
+      search: route.query.search || undefined,
+    }
+    if (isUntaggedFilter.value) {
+      params.untagged = 'true'
+    } else if (activeTagIds.value.length > 0) {
+      params.tag_ids = activeTagIds.value.join(',')
+      params.tag_mode = tagMode.value
+      params.include_subtags = includeSubtags.value ? 'true' : 'false'
+    }
+
+    const res = await axios.get('/api/recordings', { params })
     recordings.value = res.data
   } catch (e) {
     console.error("Failed to fetch recordings", e)
@@ -399,11 +632,15 @@ const fetchRecordings = async () => {
   }
 }
 
-watch(() => route.query.search, () => {
-  fetchRecordings()
-})
+watch(
+  [() => route.query.search, () => route.query.tags, () => route.query.untagged, tagMode, includeSubtags],
+  () => {
+    fetchRecordings()
+  }
+)
 
 onMounted(() => {
+  tagsStore.fetchTags()
   fetchRecordings()
 })
 
@@ -1144,6 +1381,233 @@ const getSnippet = (recording) => {
 
 .apple-dialog-delete-btn:disabled {
   opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.bulk-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.85);
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.bulk-toggle-btn:hover {
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.bulk-toggle-btn.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+.tag-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.9rem;
+  margin-bottom: 1.25rem;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: 12px;
+}
+
+.tag-filter-left {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex: 1;
+  min-width: 220px;
+}
+
+.tag-filter-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.tag-filter-picker-wrap {
+  flex: 1;
+}
+
+.untagged-active-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 9999px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.clear-mini-chip {
+  border: none;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.tag-filter-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.mode-toggle-group {
+  display: inline-flex;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.mini-mode-btn {
+  border: none;
+  background: transparent;
+  padding: 0.25rem 0.55rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.mini-mode-btn.active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.subtags-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: #475569;
+  cursor: pointer;
+}
+
+.share-tag-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  background: rgba(37, 99, 235, 0.08);
+  color: #2563eb;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.3rem 0.65rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.share-tag-btn:hover {
+  background: rgba(37, 99, 235, 0.14);
+}
+
+.clear-tags-btn {
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bulk-action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 1rem;
+  margin-bottom: 1.25rem;
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  border-radius: 12px;
+}
+
+.bulk-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.bulk-count {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #1d4ed8;
+}
+
+.bulk-link-btn {
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bulk-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.bulk-picker-wrap {
+  min-width: 210px;
+}
+
+.bulk-apply-btn,
+.bulk-remove-btn {
+  padding: 0.38rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+}
+
+.bulk-apply-btn {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.bulk-remove-btn {
+  background: #ffffff;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+.bulk-apply-btn:disabled,
+.bulk-remove-btn:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 </style>

@@ -29,7 +29,9 @@ const route = useRoute()
 const authStore = useAuthStore()
 
 const showNavigation = computed(() => {
-  return route.name !== 'login' && route.name !== 'register' && route.name !== 'share'
+  if (!route.name || route.meta?.requiresAuth === false) return false
+  if (route.path.startsWith('/share') || route.path.startsWith('/invite')) return false
+  return route.name !== 'login' && route.name !== 'register' && route.name !== 'share' && route.name !== 'share-tag' && route.name !== 'meeting-invite'
 })
 
 // Close sidebar on route change on mobile

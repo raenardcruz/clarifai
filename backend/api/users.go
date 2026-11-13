@@ -11,7 +11,7 @@ import (
 type UserUpdate struct {
 	Role                    string  `json:"role" binding:"required"`
 	IsApproved              bool    `json:"is_approved" binding:"exists"`
-	TranscriptionLimitHours float64 `json:"transcription_limit_hours" binding:"required"`
+	TranscriptionLimitHours float64 `json:"transcription_limit_hours"`
 }
 
 func SetupUsersRoutes(router *gin.RouterGroup) {
@@ -68,7 +68,13 @@ func SetupUsersRoutes(router *gin.RouterGroup) {
 
 		user.Role = input.Role
 		user.IsApproved = input.IsApproved
-		user.TranscriptionLimitHours = input.TranscriptionLimitHours
+		if user.Role != "admin" {
+			if input.TranscriptionLimitHours < 0 {
+				c.JSON(http.StatusBadRequest, gin.H{"detail": "Transcription limit hours cannot be negative"})
+				return
+			}
+			user.TranscriptionLimitHours = input.TranscriptionLimitHours
+		}
 		db.Save(&user)
 
 		c.JSON(http.StatusOK, UserOut{

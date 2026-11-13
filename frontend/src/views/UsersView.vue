@@ -57,13 +57,13 @@
           <!-- Quota Column -->
           <Column header="QUOTA (HRS)">
             <template #body="slotProps">
-              <div class="limit-input-wrapper">
+              <span v-if="slotProps.data.role === 'admin'" class="unlimited-badge">Unlimited</span>
+              <div v-else class="limit-input-wrapper">
                 <input 
                   type="number"
                   v-model.number="slotProps.data.transcription_limit_hours" 
                   min="0"
                   class="apple-num-input font-tabular"
-                  :disabled="slotProps.data.email === 'admin'"
                 />
                 <span class="hrs-suffix">hrs</span>
               </div>
@@ -262,6 +262,17 @@ onMounted(() => {
   border-radius: var(--radius-full);
   display: inline-block;
   width: fit-content;
+}
+
+.unlimited-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-full);
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: var(--apple-blue-light);
+  color: var(--apple-blue);
 }
 
 .apple-role-select {

@@ -1,8 +1,19 @@
 <template>
-  <div class="card apple-recording-card group" @click="goToDetails">
+  <div
+    class="card apple-recording-card group"
+    :class="{ 'is-bulk-selected': selectable && selected }"
+    @click="handleCardClick"
+  >
     <!-- Header with Status Badge and macOS Menu -->
     <div class="card-header" @click.stop>
       <div class="card-header-badges">
+        <input
+          v-if="selectable"
+          type="checkbox"
+          class="bulk-card-checkbox"
+          :checked="selected"
+          @change="$emit('toggle-select', recording.id)"
+        />
         <div class="status-pill" :class="statusClass">
           <span class="status-dot-beacon" :class="beaconClass"></span>
           <Loader2 v-if="isProcessing" class="animate-spin" size="13" />
@@ -83,6 +94,20 @@
         <Loader2 class="animate-spin text-blue" size="14" />
         <span>ClarifAi is synthesizing transcript and notes...</span>
       </div>
+
+      <!-- Tags Row -->
+      <div v-if="recording.tags && recording.tags.length > 0" class="card-tags-row" @click.stop>
+        <TagBadge
+          v-for="tag in visibleTags"
+          :key="tag.id"
+          :tag="tag"
+          size="sm"
+          @click="navigateToTag(tag)"
+        />
+        <span v-if="extraTagCount > 0" class="tag-overflow-pill" :title="extraTagNames">
+          +{{ extraTagCount }}
+        </span>
+      </div>
     </div>
     
     <!-- Footer with Metadata and subtle view arrow -->
@@ -117,6 +142,7 @@ import {
 import { useToast } from 'primevue/usetoast'
 import moment from 'moment'
 import axios from 'axios'
+import TagBadge from './tags/TagBadge.vue'
 
 const isIosApp = computed(() => {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios'
@@ -124,10 +150,12 @@ const isIosApp = computed(() => {
 
 const props = defineProps({
   recording: { type: Object, required: true },
-  hideMenu: { type: Boolean, default: false }
+  hideMenu: { type: Boolean, default: false },
+  selectable: { type: Boolean, default: false },
+  selected: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['refresh'])
+const emit = defineEmits(['refresh', 'toggle-select'])
 const router = useRouter()
 const toast = useToast()
 const showMenu = ref(false)
@@ -153,8 +181,20 @@ const deleteRecording = async () => {
 onMounted(() => { document.addEventListener('click', closeMenu) })
 onUnmounted(() => { document.removeEventListener('click', closeMenu) })
 
-const goToDetails = () => {
+const handleCardClick = () => {
+  if (props.selectable) {
+    emit('toggle-select', props.recording.id)
+    return
+  }
   router.push(`/recordings/${props.recording.id}`)
+}
+
+const visibleTags = computed(() => (props.recording.tags || []).slice(0, 3))
+const extraTagCount = computed(() => Math.max(0, (props.recording.tags || []).length - 3))
+const extraTagNames = computed(() => (props.recording.tags || []).slice(3).map((t) => t.path || t.name).join(', '))
+
+const navigateToTag = (tag) => {
+  router.push({ path: '/recordings', query: { tags: String(tag.id) } })
 }
 
 const isProcessing = computed(() => ['pending', 'transcribing', 'diarizing', 'summarizing'].includes(props.recording.status))
@@ -540,5 +580,36 @@ const preview = computed(() => {
 .apple-recording-card:hover .view-arrow-circle {
   opacity: 1;
   transform: translateX(0);
+}
+
+.apple-recording-card.is-bulk-selected {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+
+.bulk-card-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: #2563eb;
+  cursor: pointer;
+  margin-right: 0.2rem;
+}
+
+.card-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.65rem;
+}
+
+.tag-overflow-pill {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #64748b;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 9999px;
+  padding: 0.16rem 0.45rem;
 }
 </style>
