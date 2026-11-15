@@ -103,13 +103,16 @@ func InitDB() {
 	// Migrate legacy GORM column 'a_iprovider' to 'ai_provider' if it was created
 	_ = DB.Exec("DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='settings' AND column_name='a_iprovider') AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='settings' AND column_name='ai_provider') THEN ALTER TABLE settings RENAME COLUMN a_iprovider TO ai_provider; END IF; END $$;").Error
 
-	err = DB.AutoMigrate(&User{}, &Recording{}, &TranscriptSegment{}, &Settings{}, &Tag{}, &MeetingInvite{}, &RecordingAccess{})
+	err = DB.AutoMigrate(&User{}, &Recording{}, &TranscriptSegment{}, &Settings{}, &Tag{}, &MeetingInvite{}, &RecordingAccess{}, &DeletedImport{})
 	if err != nil {
 		log.Fatalf("Failed to run AutoMigration: %v", err)
 	}
 
 	// In case both existed, migrate data and drop legacy column
 	_ = DB.Exec("DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='settings' AND column_name='a_iprovider') THEN UPDATE settings SET ai_provider = a_iprovider WHERE (ai_provider IS NULL OR ai_provider = '') AND a_iprovider IS NOT NULL; ALTER TABLE settings DROP COLUMN a_iprovider; END IF; END $$;").Error
+
+	// Ensure existing recordings default to 'local' source
+	_ = DB.Model(&Recording{}).Where("source IS NULL OR source = ?", "").Update("source", "local").Error
 
 	// Seeding
 	SeedDB()
@@ -163,6 +166,12 @@ func SeedDB() {
 		DB.Model(&Settings{}).Where("ollama_model = ? OR ollama_model IS NULL", "").Update("ollama_model", "gemma4:12b-mlx")
 		DB.Model(&Settings{}).Where("ai_provider = ? OR ai_provider IS NULL", "").Update("ai_provider", "ollama")
 		DB.Model(&Settings{}).Where("gemini_model = ? OR gemini_model IS NULL", "").Update("gemini_model", "gemini-3.8-flash")
+		DB.Model(&Settings{}).Where("fathom_method = ? OR fathom_method IS NULL", "").Update("fathom_method", "api")
+		DB.Model(&Settings{}).Where("fathom_mcp_url = ? OR fathom_mcp_url IS NULL", "").Update("fathom_mcp_url", "https://api.fathom.ai/mcp")
+		DB.Model(&Settings{}).Where("fireflies_method = ? OR fireflies_method IS NULL", "").Update("fireflies_method", "api")
+		DB.Model(&Settings{}).Where("fireflies_mcp_url = ? OR fireflies_mcp_url IS NULL", "").Update("fireflies_mcp_url", "https://api.fireflies.ai/mcp")
+		DB.Model(&Settings{}).Where("otter_method = ? OR otter_method IS NULL", "").Update("otter_method", "api")
+		DB.Model(&Settings{}).Where("otter_api_base_url = ? OR otter_api_base_url IS NULL", "").Update("otter_api_base_url", "https://api.otter.ai")
 		DB.Model(&Settings{}).Where("executive_summary_prompt = ? OR executive_summary_prompt IS NULL OR executive_summary_prompt LIKE ?", "", "Analyze the following transcript and write a detailed, cohesive executive summary in a narrative paragraph format.%").Update("executive_summary_prompt", DefaultExecutiveSummaryPrompt)
 		DB.Model(&Settings{}).Where("medical_summary_prompt = ? OR medical_summary_prompt IS NULL OR medical_summary_prompt LIKE ?", "", "Analyze the following medical or clinical encounter transcript and generate a structured Clinical / SOAP Note in clean Markdown:%").Update("medical_summary_prompt", DefaultMedicalSummaryPrompt)
 	}

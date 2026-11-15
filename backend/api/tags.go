@@ -640,14 +640,16 @@ func getSharedTag(c *gin.Context) {
 		})
 
 		sharedRecordings = append(sharedRecordings, gin.H{
-			"id":         rec.ID,
-			"title":      rec.Title,
-			"status":     rec.Status,
-			"created_at": rec.CreatedAt.Format(time.RFC3339),
-			"duration":   rec.Duration,
-			"summary_md": rec.SummaryMD,
-			"is_medical": rec.IsMedical,
-			"tags":       recTags,
+			"id":           rec.ID,
+			"title":        rec.Title,
+			"status":       rec.Status,
+			"created_at":   rec.CreatedAt.Format(time.RFC3339),
+			"duration":     rec.Duration,
+			"summary_md":   rec.SummaryMD,
+			"is_medical":   rec.IsMedical,
+			"source":       normalizeRecordingSource(rec.Source),
+			"external_url": rec.ExternalURL,
+			"tags":         recTags,
 		})
 	}
 

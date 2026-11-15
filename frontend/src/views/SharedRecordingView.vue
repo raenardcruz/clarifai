@@ -24,6 +24,7 @@
           <Stethoscope size="13" />
           <span>Clinical Consultation</span>
         </span>
+        <SourceBadge :source="recording.source" size="md" />
         <span class="meta-pill pill-shared">
           <span>Read-Only Preview</span>
         </span>
@@ -97,6 +98,7 @@ import { useToast } from 'primevue/usetoast'
 import { Calendar, Clock, Sparkles, Loader2, Printer, Copy, Check, Stethoscope } from '@lucide/vue'
 import { useTitle } from '@vueuse/core'
 import SummaryRenderer from '../components/SummaryRenderer.vue'
+import SourceBadge from '../components/SourceBadge.vue'
 import { extractSummaryText } from '../utils/summary'
 
 const summaryRendererRef = ref(null)

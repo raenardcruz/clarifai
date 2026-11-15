@@ -93,6 +93,18 @@
             <span>{{ bulkSelectMode ? 'Done' : 'Select' }}</span>
           </button>
 
+          <!-- Source Selector -->
+          <div class="sort-selector">
+            <span class="sort-label">Source:</span>
+            <select v-model="sourceFilter" class="apple-select">
+              <option value="all">All Sources</option>
+              <option value="local">ClarifAi</option>
+              <option value="fathom">Fathom</option>
+              <option value="fireflies">Fireflies.ai</option>
+              <option value="otter">Otter.ai</option>
+            </select>
+          </div>
+
           <!-- Sort Selector -->
           <div class="sort-selector">
             <span class="sort-label">Sort:</span>
@@ -253,7 +265,7 @@
         <p class="empty-desc">
           {{ route.query.search 
             ? `No recordings found matching "${route.query.search}". Try a different keyword.` 
-            : 'Capture audio live with your microphone or upload audio files to start generating AI transcripts and summaries.' 
+            : 'Capture audio live, upload audio/video files, or add an entire transcript to start generating AI notes and summaries.' 
           }}
         </p>
         
@@ -362,6 +374,7 @@
               <div class="row-title-info">
                 <div class="row-title-line">
                   <span class="row-title-text">{{ recording.title }}</span>
+                  <SourceBadge :source="recording.source" size="sm" />
                   <span v-if="recording.is_medical" class="row-medical-pill" title="Medical Conversation">
                     <Stethoscope size="11" />
                     <span>Medical</span>
@@ -463,6 +476,7 @@ import OfflineRecordingCard from '../components/OfflineRecordingCard.vue'
 import NewRecordingModal from '../components/NewRecordingModal.vue'
 import SpeechmaticsUsage from '../components/SpeechmaticsUsage.vue'
 import TagPicker from '../components/tags/TagPicker.vue'
+import SourceBadge from '../components/SourceBadge.vue'
 import { useOfflineRecordingsStore } from '../stores/offlineRecordings'
 import { useTagsStore } from '../stores/tags'
 import { getPublicBaseUrl } from '../services/apiConfig'
@@ -477,6 +491,7 @@ const recordings = ref([])
 const loading = ref(true)
 const isRecordingModalOpen = ref(false)
 const currentFilter = ref('all')
+const sourceFilter = ref('all')
 const sortBy = ref('newest')
 const viewMode = ref('grid')
 const showClearAllOfflineDialog = ref(false)
@@ -667,6 +682,10 @@ const filteredRecordings = computed(() => {
     list = list.filter(r => ['pending', 'transcribing', 'diarizing', 'summarizing'].includes(r.status))
   } else if (currentFilter.value === 'medical') {
     list = list.filter(r => r.is_medical)
+  }
+
+  if (sourceFilter.value !== 'all') {
+    list = list.filter(r => (r.source || 'local') === sourceFilter.value)
   }
 
   // Sort

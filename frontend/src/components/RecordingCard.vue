@@ -27,6 +27,8 @@
           <Stethoscope size="11" />
           <span>Medical</span>
         </div>
+
+        <SourceBadge :source="recording.source" size="sm" />
       </div>
       
       <div class="dropdown-container" v-if="!hideMenu">
@@ -143,6 +145,7 @@ import { useToast } from 'primevue/usetoast'
 import moment from 'moment'
 import axios from 'axios'
 import TagBadge from './tags/TagBadge.vue'
+import SourceBadge from './SourceBadge.vue'
 import { extractSummaryPreview } from '../utils/summary'
 
 const isIosApp = computed(() => {

@@ -27,6 +27,9 @@ type Recording struct {
 	SpeechmaticsJobID *string             `json:"speechmatics_job_id,omitempty"`
 	ErrorMessage      *string             `json:"error_message,omitempty"`
 	IsMedical         bool                `gorm:"default:false" json:"is_medical"`
+	Source            string              `gorm:"default:'local';index" json:"source"` // local, fathom, fireflies, otter
+	ExternalID        *string             `gorm:"index" json:"external_id,omitempty"`
+	ExternalURL       *string             `json:"external_url,omitempty"`
 	CreatedAt         time.Time           `gorm:"autoCreateTime" json:"created_at"`
 	Segments          []TranscriptSegment `gorm:"foreignKey:RecordingID;constraint:OnDelete:CASCADE" json:"segments,omitempty"`
 	Tags              []Tag               `gorm:"many2many:recording_tags;constraint:OnDelete:CASCADE" json:"tags,omitempty"`
@@ -69,6 +72,15 @@ type RecordingAccess struct {
 	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
 
+// DeletedImport records external meeting IDs explicitly deleted by a user so resyncs do not reimport them.
+type DeletedImport struct {
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	UserID     uint      `gorm:"uniqueIndex:idx_deleted_import_user_source_ext;not null" json:"user_id"`
+	Source     string    `gorm:"uniqueIndex:idx_deleted_import_user_source_ext;not null" json:"source"`
+	ExternalID string    `gorm:"uniqueIndex:idx_deleted_import_user_source_ext;not null" json:"external_id"`
+	DeletedAt  time.Time `gorm:"autoCreateTime" json:"deleted_at"`
+}
+
 const DefaultExecutiveSummaryPrompt = `Analyze the following transcript and produce a comprehensive, deeply structured session summary that takes full advantage of the HTML summary template's design system:
 - **Executive Overview & KPIs**: Synthesize the core thesis, primary topics, speaker viewpoints, and final outcomes in a crisp 2-4 sentence lead paragraph. If the transcript contains 2-3 clear headline metrics, counts, targets, or durations, populate the .kpi-grid cards.
 - **Chronological Flow & Conceptual Breakdown**: Organize into sequential <h3> subsections (2.1, 2.2, ...) matching the exact chronological progression of the session. Attribute key ideas and decisions to specific speakers. Use <ol>/<ul> for step-by-step mechanisms, .callout boxes for concrete examples/analogies/case studies, <blockquote> for notable verbatim quotes, and <pre><code> for technical syntax, formulas, or commands when applicable.
@@ -103,6 +115,29 @@ type Settings struct {
 	GeminiModel            string  `gorm:"column:gemini_model;default:'gemini-3.8-flash'" json:"gemini_model"`
 	GeminiAPIKey           *string `gorm:"column:gemini_api_key" json:"gemini_api_key,omitempty"`
 	GeminiAPIBase          string  `gorm:"column:gemini_api_base" json:"gemini_api_base,omitempty"`
+
+	// Third-Party Note-Taker Integrations
+	FathomEnabled        bool       `gorm:"column:fathom_enabled;default:false" json:"fathom_enabled"`
+	FathomMethod         string     `gorm:"column:fathom_method;default:'api'" json:"fathom_method"`
+	FathomAPIKey         *string    `gorm:"column:fathom_api_key" json:"fathom_api_key,omitempty"`
+	FathomMCPURL         string     `gorm:"column:fathom_mcp_url;default:'https://api.fathom.ai/mcp'" json:"fathom_mcp_url"`
+	FathomLastSyncAt     *time.Time `gorm:"column:fathom_last_sync_at" json:"fathom_last_sync_at,omitempty"`
+	FathomLastSyncStatus string     `gorm:"column:fathom_last_sync_status" json:"fathom_last_sync_status,omitempty"`
+
+	FirefliesEnabled        bool       `gorm:"column:fireflies_enabled;default:false" json:"fireflies_enabled"`
+	FirefliesMethod         string     `gorm:"column:fireflies_method;default:'api'" json:"fireflies_method"`
+	FirefliesAPIKey         *string    `gorm:"column:fireflies_api_key" json:"fireflies_api_key,omitempty"`
+	FirefliesMCPURL         string     `gorm:"column:fireflies_mcp_url;default:'https://api.fireflies.ai/mcp'" json:"fireflies_mcp_url"`
+	FirefliesLastSyncAt     *time.Time `gorm:"column:fireflies_last_sync_at" json:"fireflies_last_sync_at,omitempty"`
+	FirefliesLastSyncStatus string     `gorm:"column:fireflies_last_sync_status" json:"fireflies_last_sync_status,omitempty"`
+
+	OtterEnabled        bool       `gorm:"column:otter_enabled;default:false" json:"otter_enabled"`
+	OtterMethod         string     `gorm:"column:otter_method;default:'api'" json:"otter_method"`
+	OtterAPIKey         *string    `gorm:"column:otter_api_key" json:"otter_api_key,omitempty"`
+	OtterAPIBaseURL     string     `gorm:"column:otter_api_base_url;default:'https://api.otter.ai'" json:"otter_api_base_url"`
+	OtterMCPURL         string     `gorm:"column:otter_mcp_url" json:"otter_mcp_url"`
+	OtterLastSyncAt     *time.Time `gorm:"column:otter_last_sync_at" json:"otter_last_sync_at,omitempty"`
+	OtterLastSyncStatus string     `gorm:"column:otter_last_sync_status" json:"otter_last_sync_status,omitempty"`
 }
 
 
