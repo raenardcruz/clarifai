@@ -104,7 +104,7 @@
           <Plus size="28" stroke-width="2.2" />
         </div>
         <h3>Start New Recording</h3>
-        <p>Record microphone live or upload an MP3, WAV, or MP4 file</p>
+        <p>Record microphone live, upload media, or paste an entire transcript</p>
       </div>
     </div>
 

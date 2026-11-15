@@ -57,13 +57,23 @@ type SegmentUpdate struct {
 }
 
 type RecordingOut struct {
-	ID        string       `json:"id"`
-	Title     string       `json:"title"`
-	Status    string       `json:"status"`
-	CreatedAt string       `json:"created_at"`
-	Duration  *float64     `json:"duration"`
-	IsMedical bool         `json:"is_medical"`
-	Tags      []TagSummary `json:"tags"`
+	ID          string       `json:"id"`
+	Title       string       `json:"title"`
+	Status      string       `json:"status"`
+	CreatedAt   string       `json:"created_at"`
+	Duration    *float64     `json:"duration"`
+	IsMedical   bool         `json:"is_medical"`
+	Source      string       `json:"source"`
+	ExternalURL *string      `json:"external_url,omitempty"`
+	Tags        []TagSummary `json:"tags"`
+}
+
+func normalizeRecordingSource(source string) string {
+	s := strings.TrimSpace(source)
+	if s == "" {
+		return services.SourceLocal
+	}
+	return s
 }
 
 func getSpeechmaticsKey(settings *models.Settings) string {
@@ -84,6 +94,7 @@ func SetupRecordingsRoutes(router *gin.RouterGroup) {
 	authGroup.Use(AuthMiddleware(), RequireApprovedUser())
 	{
 		authGroup.POST("", uploadAudio)
+		authGroup.POST("/transcript", createRecordingFromTranscript)
 		authGroup.POST("/upload/init", initChunkedUpload)
 		authGroup.POST("/upload/chunk", uploadChunk)
 		authGroup.POST("/upload/complete", completeChunkedUpload)
@@ -94,6 +105,7 @@ func SetupRecordingsRoutes(router *gin.RouterGroup) {
 		authGroup.POST("/invite/:token/join", joinMeetingInvite)
 		authGroup.GET("/:recording_id", getRecordingDetails)
 		authGroup.PATCH("/:recording_id", updateRecording)
+		authGroup.PUT("/:recording_id/transcript", replaceRecordingTranscript)
 		authGroup.PUT("/:recording_id/tags", setRecordingTags)
 		authGroup.POST("/bulk-tags", bulkUpdateRecordingTags)
 		authGroup.PUT("/:recording_id/segments/:segment_id", updateSegment)
@@ -115,7 +127,7 @@ func getContextUser(c *gin.Context) (*models.User, error) {
 func getUserUsedSeconds(db *gorm.DB, userID uint) float64 {
 	var totalSeconds float64
 	db.Model(&models.Recording{}).
-		Where("user_id = ? AND duration IS NOT NULL", userID).
+		Where("user_id = ? AND duration IS NOT NULL AND (source IS NULL OR source = '' OR source = 'local') AND audio_path != ''", userID).
 		Select("COALESCE(SUM(duration), 0)").
 		Scan(&totalSeconds)
 	return totalSeconds
@@ -439,6 +451,7 @@ func getRecordings(c *gin.Context) {
 
 	search := c.Query("search")
 	isMedicalFilter := c.Query("is_medical")
+	sourceFilter := strings.TrimSpace(c.Query("source"))
 	tagIDsParam := strings.TrimSpace(c.Query("tag_ids"))
 	tagMode := c.DefaultQuery("tag_mode", "all")
 	includeSubtags := c.DefaultQuery("include_subtags", "true") != "false"
@@ -456,6 +469,14 @@ func getRecordings(c *gin.Context) {
 		query = query.Where("recordings.is_medical = ?", true)
 	} else if isMedicalFilter == "false" {
 		query = query.Where("recordings.is_medical = ?", false)
+	}
+
+	if sourceFilter != "" && sourceFilter != "all" {
+		if sourceFilter == "local" {
+			query = query.Where("(recordings.source IS NULL OR recordings.source = '' OR recordings.source = ?)", "local")
+		} else {
+			query = query.Where("recordings.source = ?", sourceFilter)
+		}
 	}
 
 	if untaggedOnly {
@@ -513,13 +534,15 @@ func getRecordings(c *gin.Context) {
 	response := []RecordingOut{}
 	for _, r := range recordings {
 		response = append(response, RecordingOut{
-			ID:        r.ID,
-			Title:     r.Title,
-			Status:    r.Status,
-			CreatedAt: r.CreatedAt.Format(time.RFC3339),
-			Duration:  r.Duration,
-			IsMedical: r.IsMedical,
-			Tags:      buildTagSummaries(r.Tags, tagByID),
+			ID:          r.ID,
+			Title:       r.Title,
+			Status:      r.Status,
+			CreatedAt:   r.CreatedAt.Format(time.RFC3339),
+			Duration:    r.Duration,
+			IsMedical:   r.IsMedical,
+			Source:      normalizeRecordingSource(r.Source),
+			ExternalURL: r.ExternalURL,
+			Tags:        buildTagSummaries(r.Tags, tagByID),
 		})
 	}
 
@@ -558,13 +581,15 @@ func getRecentRecordings(c *gin.Context) {
 	recResponse := []RecordingOut{}
 	for _, r := range recordings {
 		recResponse = append(recResponse, RecordingOut{
-			ID:        r.ID,
-			Title:     r.Title,
-			Status:    r.Status,
-			CreatedAt: r.CreatedAt.Format(time.RFC3339),
-			Duration:  r.Duration,
-			IsMedical: r.IsMedical,
-			Tags:      buildTagSummaries(r.Tags, tagByID),
+			ID:          r.ID,
+			Title:       r.Title,
+			Status:      r.Status,
+			CreatedAt:   r.CreatedAt.Format(time.RFC3339),
+			Duration:    r.Duration,
+			IsMedical:   r.IsMedical,
+			Source:      normalizeRecordingSource(r.Source),
+			ExternalURL: r.ExternalURL,
+			Tags:        buildTagSummaries(r.Tags, tagByID),
 		})
 	}
 
@@ -676,7 +701,7 @@ func getRecordingDetails(c *gin.Context) {
 
 	var recording models.Recording
 	if err := db.Preload("Tags").Preload("Segments", func(db *gorm.DB) *gorm.DB {
-		return db.Order("transcript_segments.start_time ASC")
+		return db.Order("transcript_segments.start_time ASC, transcript_segments.id ASC")
 	}).Where("id = ?", recordingID).First(&recording).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"detail": "Recording not found"})
 		return
@@ -694,15 +719,18 @@ func getRecordingDetails(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"id":         recording.ID,
-		"title":      recording.Title,
-		"status":     recording.Status,
-		"created_at": recording.CreatedAt.Format(time.RFC3339),
-		"duration":   recording.Duration,
-		"summary_md": recording.SummaryMD,
-		"is_medical": recording.IsMedical,
-		"segments":   segments,
-		"tags":       buildTagSummaries(recording.Tags, tagByID),
+		"id":           recording.ID,
+		"title":        recording.Title,
+		"status":       recording.Status,
+		"created_at":   recording.CreatedAt.Format(time.RFC3339),
+		"duration":     recording.Duration,
+		"summary_md":   recording.SummaryMD,
+		"is_medical":   recording.IsMedical,
+		"source":       normalizeRecordingSource(recording.Source),
+		"external_url": recording.ExternalURL,
+		"is_owner":     recording.UserID == currentUser.ID,
+		"segments":     segments,
+		"tags":         buildTagSummaries(recording.Tags, tagByID),
 	})
 }
 
@@ -717,13 +745,15 @@ func getSharedRecording(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"id":         recording.ID,
-		"title":      recording.Title,
-		"status":     recording.Status,
-		"created_at": recording.CreatedAt.Format(time.RFC3339),
-		"duration":   recording.Duration,
-		"summary_md": recording.SummaryMD,
-		"is_medical": recording.IsMedical,
+		"id":           recording.ID,
+		"title":        recording.Title,
+		"status":       recording.Status,
+		"created_at":   recording.CreatedAt.Format(time.RFC3339),
+		"duration":     recording.Duration,
+		"summary_md":   recording.SummaryMD,
+		"is_medical":   recording.IsMedical,
+		"source":       normalizeRecordingSource(recording.Source),
+		"external_url": recording.ExternalURL,
 	})
 }
 
@@ -962,7 +992,7 @@ func detectRecordingSpeakers(c *gin.Context) {
 	}
 
 	var segments []models.TranscriptSegment
-	db.Where("recording_id = ?", recordingID).Order("start_time asc").Find(&segments)
+	db.Where("recording_id = ?", recordingID).Order("start_time asc, id asc").Find(&segments)
 	if len(segments) == 0 {
 		c.JSON(http.StatusOK, gin.H{"message": "No segments to analyze", "mapping": gin.H{}})
 		return
@@ -1018,15 +1048,24 @@ func deleteRecording(c *gin.Context) {
 		return
 	}
 
-	db.Where("recording_id = ?", recordingID).Delete(&models.TranscriptSegment{})
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		if err := services.MarkImportedMeetingDeleted(tx, recording.UserID, recording.Source, recording.ExternalID); err != nil {
+			return err
+		}
+		if err := tx.Where("recording_id = ?", recordingID).Delete(&models.TranscriptSegment{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&recording).Error
+	}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Failed to delete recording"})
+		return
+	}
 
 	if recording.AudioPath != "" {
 		if _, err := os.Stat(recording.AudioPath); err == nil {
 			os.Remove(recording.AudioPath)
 		}
 	}
-
-	db.Delete(&recording)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Recording deleted successfully"})
 }
@@ -1100,6 +1139,7 @@ func getMeetingInvite(c *gin.Context) {
 		"created_at":   recording.CreatedAt.Format(time.RFC3339),
 		"duration":     recording.Duration,
 		"is_medical":   recording.IsMedical,
+		"source":       normalizeRecordingSource(recording.Source),
 	})
 }
 
@@ -1217,5 +1257,307 @@ func joinMeetingInvite(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"recording_id": invite.RecordingID,
+	})
+}
+
+type TranscriptSegmentInput struct {
+	StartTime *float64 `json:"start_time"`
+	EndTime   *float64 `json:"end_time"`
+	Speaker   string   `json:"speaker"`
+	Text      string   `json:"text"`
+}
+
+type CreateTranscriptRecordingRequest struct {
+	Title          string                   `json:"title"`
+	Transcript     string                   `json:"transcript"`
+	Segments       []TranscriptSegmentInput `json:"segments"`
+	DefaultSpeaker string                   `json:"default_speaker"`
+	IsMedical      bool                     `json:"is_medical"`
+	TagIDs         []uint                   `json:"tag_ids"`
+	AutoSummarize  *bool                    `json:"auto_summarize"`
+}
+
+type UpdateTranscriptRequest struct {
+	Transcript     string                   `json:"transcript"`
+	Segments       []TranscriptSegmentInput `json:"segments"`
+	DefaultSpeaker string                   `json:"default_speaker"`
+	Mode           string                   `json:"mode"` // "replace" (default) or "append"
+}
+
+func buildTranscriptSegments(recordingID string, rawTranscript string, inputSegments []TranscriptSegmentInput, defaultSpeaker string, timeOffset float64) ([]models.TranscriptSegment, *float64) {
+	defSpeaker := strings.TrimSpace(defaultSpeaker)
+	if defSpeaker == "" {
+		defSpeaker = "Speaker 1"
+	}
+
+	var parsed []services.ImportedSegment
+	if len(inputSegments) > 0 {
+		lastStart := -0.001
+		for _, in := range inputSegments {
+			txt := strings.TrimSpace(in.Text)
+			if txt == "" {
+				continue
+			}
+			spk := strings.TrimSpace(in.Speaker)
+			if spk == "" {
+				spk = defSpeaker
+			}
+			var start float64
+			if in.StartTime != nil && *in.StartTime >= 0 {
+				start = *in.StartTime
+			} else {
+				start = math.Round(math.Max(0, lastStart+0.001)*1000) / 1000
+			}
+			end := start
+			if in.EndTime != nil && *in.EndTime >= start {
+				end = *in.EndTime
+			}
+			lastStart = start
+			parsed = append(parsed, services.ImportedSegment{
+				StartTime: start,
+				EndTime:   end,
+				Speaker:   spk,
+				Text:      txt,
+			})
+		}
+	} else {
+		parsed = services.ParseTranscriptText(rawTranscript, defSpeaker)
+	}
+
+	if len(parsed) == 0 {
+		return nil, nil
+	}
+
+	dbSegs := make([]models.TranscriptSegment, 0, len(parsed))
+	var maxEnd float64
+	for _, seg := range parsed {
+		start := seg.StartTime + timeOffset
+		end := seg.EndTime + timeOffset
+		if end < start {
+			end = start
+		}
+		if end > maxEnd {
+			maxEnd = end
+		}
+		dbSegs = append(dbSegs, models.TranscriptSegment{
+			RecordingID: recordingID,
+			StartTime:   start,
+			EndTime:     end,
+			Speaker:     seg.Speaker,
+			Text:        seg.Text,
+		})
+	}
+
+	var durationPtr *float64
+	if maxEnd >= 1.0 {
+		d := math.Round(maxEnd*100) / 100
+		durationPtr = &d
+	}
+
+	return dbSegs, durationPtr
+}
+
+func createRecordingFromTranscript(c *gin.Context) {
+	currentUser, err := getContextUser(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	var req CreateTranscriptRecordingRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Invalid request payload"})
+		return
+	}
+
+	jobID := uuid.New().String()
+	segments, durationPtr := buildTranscriptSegments(jobID, req.Transcript, req.Segments, req.DefaultSpeaker, 0)
+	if len(segments) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Transcript text is required and must contain non-empty content"})
+		return
+	}
+
+	db := models.GetDB()
+	var settings models.Settings
+	db.First(&settings)
+
+	autoSummarize := settings.AISummarizationMode == "auto"
+	if req.AutoSummarize != nil {
+		autoSummarize = *req.AutoSummarize
+	}
+
+	customTitle := strings.TrimSpace(req.Title)
+	preserveTitle := customTitle != ""
+	title := customTitle
+	if title == "" {
+		if req.IsMedical {
+			title = "Clinical Consultation"
+		} else {
+			title = "Transcript Note"
+		}
+	}
+
+	initialStatus := "completed"
+	if autoSummarize {
+		initialStatus = "summarizing"
+	}
+
+	recording := models.Recording{
+		ID:        jobID,
+		UserID:    currentUser.ID,
+		Title:     title,
+		Filename:  "transcript.txt",
+		AudioPath: "",
+		Status:    initialStatus,
+		Duration:  durationPtr,
+		IsMedical: req.IsMedical,
+		Source:    services.SourceLocal,
+	}
+
+	txErr := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&recording).Error; err != nil {
+			return err
+		}
+		if err := tx.CreateInBatches(&segments, 200).Error; err != nil {
+			return err
+		}
+		if len(req.TagIDs) > 0 {
+			var tags []models.Tag
+			tx.Where("id IN ? AND user_id = ?", req.TagIDs, currentUser.ID).Find(&tags)
+			if len(tags) > 0 {
+				if err := tx.Model(&recording).Association("Tags").Replace(tags); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+	if txErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Could not save transcript recording"})
+		return
+	}
+
+	if autoSummarize {
+		models.GlobalJobsDB.Set(jobID, models.JobStatus{
+			ID:       jobID,
+			Filename: recording.Filename,
+			Status:   "summarizing",
+			Progress: 85,
+		})
+		go services.GenerateSummaryWithOptions(jobID, "", preserveTitle)
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message":       "Transcript saved successfully",
+		"job_id":        jobID,
+		"id":            jobID,
+		"title":         recording.Title,
+		"status":        recording.Status,
+		"segment_count": len(segments),
+	})
+}
+
+func replaceRecordingTranscript(c *gin.Context) {
+	currentUser, err := getContextUser(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	recordingID := c.Param("recording_id")
+	db := models.GetDB()
+
+	var recording models.Recording
+	if err := db.Where("id = ? AND user_id = ?", recordingID, currentUser.ID).First(&recording).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"detail": "Recording not found"})
+		return
+	}
+
+	if recording.Status == "pending" || recording.Status == "transcribing" || recording.Status == "diarizing" || recording.Status == "summarizing" {
+		c.JSON(http.StatusConflict, gin.H{"detail": "Cannot modify transcript while recording is still processing"})
+		return
+	}
+
+	var req UpdateTranscriptRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Invalid request payload"})
+		return
+	}
+
+	mode := strings.ToLower(strings.TrimSpace(req.Mode))
+	if mode == "" {
+		mode = "replace"
+	}
+	if mode != "replace" && mode != "append" {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "mode must be 'replace' or 'append'"})
+		return
+	}
+
+	timeOffset := 0.0
+	if mode == "append" {
+		var existing []models.TranscriptSegment
+		db.Where("recording_id = ?", recordingID).Order("start_time desc, id desc").Limit(1).Find(&existing)
+		if len(existing) > 0 {
+			maxExisting := existing[0].EndTime
+			if existing[0].StartTime > maxExisting {
+				maxExisting = existing[0].StartTime
+			}
+			timeOffset = math.Round((maxExisting+0.001)*1000) / 1000
+		}
+	}
+
+	segments, durationPtr := buildTranscriptSegments(recordingID, req.Transcript, req.Segments, req.DefaultSpeaker, timeOffset)
+	if len(segments) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Transcript text is required and must contain non-empty content"})
+		return
+	}
+
+	txErr := db.Transaction(func(tx *gorm.DB) error {
+		if mode == "replace" {
+			if err := tx.Where("recording_id = ?", recordingID).Delete(&models.TranscriptSegment{}).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.CreateInBatches(&segments, 200).Error; err != nil {
+			return err
+		}
+		updates := map[string]interface{}{}
+		if recording.Status == "error" {
+			updates["status"] = "completed"
+			updates["error_message"] = nil
+		}
+		if recording.Duration == nil && durationPtr != nil {
+			updates["duration"] = *durationPtr
+		}
+		if len(updates) > 0 {
+			if err := tx.Model(&recording).Updates(updates).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if txErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"detail": "Failed to save transcript segments"})
+		return
+	}
+
+	var allSegments []models.TranscriptSegment
+	db.Where("recording_id = ?", recordingID).Order("start_time asc, id asc").Find(&allSegments)
+
+	segOut := make([]gin.H, 0, len(allSegments))
+	for _, s := range allSegments {
+		segOut = append(segOut, gin.H{
+			"id":      s.ID,
+			"start":   s.StartTime,
+			"end":     s.EndTime,
+			"speaker": s.Speaker,
+			"text":    s.Text,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":       "Transcript updated successfully",
+		"segment_count": len(allSegments),
+		"segments":      segOut,
 	})
 }

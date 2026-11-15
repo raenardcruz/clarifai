@@ -85,6 +85,7 @@
         >
           <div class="rec-item-top">
             <span class="rec-item-title">{{ rec.title }}</span>
+            <SourceBadge :source="rec.source" size="sm" />
             <span v-if="rec.is_medical" class="mini-medical-badge" title="Clinical Consultation">
               <Stethoscope size="12" />
             </span>
@@ -124,6 +125,7 @@
                 <Stethoscope size="13" />
                 <span>Clinical Consultation</span>
               </span>
+              <SourceBadge :source="selectedRecording.source" size="md" />
             </div>
           </div>
 
@@ -190,6 +192,7 @@ import moment from 'moment'
 import { useToast } from 'primevue/usetoast'
 import { useTitle } from '@vueuse/core'
 import SummaryRenderer from '../components/SummaryRenderer.vue'
+import SourceBadge from '../components/SourceBadge.vue'
 import { extractSummaryText } from '../utils/summary'
 import {
   Sparkles,

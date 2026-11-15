@@ -90,6 +90,7 @@ func main() {
 		api.SetupAuthRoutes(apiGroup.Group("/auth"))
 		api.SetupUsersRoutes(apiGroup.Group("/users"))
 		api.SetupSettingsRoutes(apiGroup.Group("/settings"))
+		api.SetupIntegrationsRoutes(apiGroup.Group("/integrations"))
 		api.SetupRecordingsRoutes(apiGroup.Group("/recordings"))
 		api.SetupTagsRoutes(apiGroup.Group("/tags"))
 	}

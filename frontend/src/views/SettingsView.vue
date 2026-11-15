@@ -5,11 +5,39 @@
       <p class="page-subtitle">Configure AI models, speech transcription engines, and system rules</p>
     </div>
 
+    <!-- Category Tab Navigation -->
+    <div class="settings-tabs-wrapper">
+      <div class="segmented-control-macos" role="tablist" aria-label="Settings categories">
+        <button
+          v-for="tab in tabs"
+          :key="tab.id"
+          type="button"
+          role="tab"
+          :id="`tab-${tab.id}`"
+          :aria-selected="activeTab === tab.id"
+          :aria-controls="`panel-${tab.id}`"
+          class="segment-item"
+          :class="{ active: activeTab === tab.id }"
+          @click="setActiveTab(tab.id)"
+        >
+          <component :is="tab.icon" size="15" class="tab-icon" />
+          <span>{{ tab.label }}</span>
+          <span v-if="tab.badge" class="tab-badge" :class="tab.badgeClass">{{ tab.badge }}</span>
+        </button>
+      </div>
+    </div>
+
     <!-- macOS Grouped Settings Card -->
     <div class="settings-card">
       <form @submit.prevent="saveSettings">
-        <!-- AI Intelligence Section -->
-        <div class="settings-section">
+        <!-- Tab 1: AI & Summarization -->
+        <div
+          v-show="activeTab === 'ai'"
+          role="tabpanel"
+          id="panel-ai"
+          aria-labelledby="tab-ai"
+          class="settings-section"
+        >
           <div class="section-title-row">
             <div class="section-icon-badge bg-blue">
               <Sparkles size="16" color="#0071E3" />
@@ -236,8 +264,14 @@
         </div>
 
 
-        <!-- Speech Transcription Engine Section -->
-        <div class="settings-section mt-8">
+        <!-- Tab 2: Transcription Provider -->
+        <div
+          v-show="activeTab === 'transcription'"
+          role="tabpanel"
+          id="panel-transcription"
+          aria-labelledby="tab-transcription"
+          class="settings-section"
+        >
           <div class="section-title-row">
             <div class="section-icon-badge bg-purple">
               <Key size="16" color="#AF52DE" />
@@ -271,8 +305,29 @@
           </div>
         </div>
 
-        <!-- Mobile & Offline Synchronization Section -->
-        <div class="settings-section">
+        <!-- Tab 3: Third-Party Note-Taker Integrations (Fathom, Fireflies.ai, Otter.ai) -->
+        <div
+          v-show="activeTab === 'integrations'"
+          role="tabpanel"
+          id="panel-integrations"
+          aria-labelledby="tab-integrations"
+        >
+          <IntegrationsSettingsSection
+            v-model:settings="settings"
+            :syncing-provider="syncingProvider"
+            :is-syncing-all="isSyncingAll"
+            @sync="syncIntegrations"
+          />
+        </div>
+
+        <!-- Tab 4: Mobile & Offline Synchronization -->
+        <div
+          v-show="activeTab === 'sync'"
+          role="tabpanel"
+          id="panel-sync"
+          aria-labelledby="tab-sync"
+          class="settings-section"
+        >
           <div class="section-title-row">
             <div class="section-icon-badge bg-blue">
               <Smartphone size="16" color="#0071E3" />
@@ -393,17 +448,46 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import { useToast } from 'primevue/usetoast'
 import Dialog from 'primevue/dialog'
-import { Sparkles, Key, Save, Loader2, Eye, EyeOff, Smartphone, RefreshCw, Trash2 } from '@lucide/vue'
+import { Sparkles, Key, Save, Loader2, Eye, EyeOff, Smartphone, RefreshCw, Trash2, Mic, Plug } from '@lucide/vue'
 import Select from 'primevue/select'
 import { getApiBaseUrl, setApiBaseUrl, checkBackendHealth } from '../services/apiConfig'
 import { useOfflineRecordingsStore } from '../stores/offlineRecordings'
+import IntegrationsSettingsSection from '../components/IntegrationsSettingsSection.vue'
 
+const VALID_TABS = ['ai', 'transcription', 'integrations', 'sync']
+const route = useRoute()
+const router = useRouter()
 const toast = useToast()
 const offlineStore = useOfflineRecordingsStore()
+
+const activeTab = ref(
+  VALID_TABS.includes(route.query.tab) ? route.query.tab : 'ai'
+)
+
+const setActiveTab = (tabId) => {
+  if (!VALID_TABS.includes(tabId)) return
+  activeTab.value = tabId
+  if (route.query.tab !== tabId) {
+    router.replace({ query: { ...route.query, tab: tabId } })
+  }
+}
+
+watch(
+  () => route.query.tab,
+  (newTab) => {
+    if (VALID_TABS.includes(newTab)) {
+      activeTab.value = newTab
+    } else if (!newTab) {
+      activeTab.value = 'ai'
+    }
+  }
+)
+
 const serverUrl = ref('')
 const isTestingServer = ref(false)
 const showClearCacheDialog = ref(false)
@@ -443,7 +527,26 @@ const settings = ref({
   gemini_api_base: '',
   executive_summary_prompt: 'Analyze the following transcript and produce a comprehensive, deeply structured session summary that takes full advantage of the HTML summary template\'s design system: include an Executive Overview with KPI cards when metrics exist, a Chronological Flow & Conceptual Breakdown with step-by-step lists, callout boxes, blockquotes, and code blocks, Visual Analytics (CSS bar charts & inline SVG trend charts) for numerical breakdowns, Comparative Analysis & Action Matrix tables with status pills, Questions & Answers, and Key Terms & Glossary. Cleanly omit any optional section without supporting data.',
   medical_summary_prompt: '',
-  speechmatics_api_key: ''
+  speechmatics_api_key: '',
+  fathom_enabled: false,
+  fathom_method: 'api',
+  fathom_api_key: '',
+  fathom_mcp_url: 'https://api.fathom.ai/mcp',
+  fathom_last_sync_at: null,
+  fathom_last_sync_status: '',
+  fireflies_enabled: false,
+  fireflies_method: 'api',
+  fireflies_api_key: '',
+  fireflies_mcp_url: 'https://api.fireflies.ai/mcp',
+  fireflies_last_sync_at: null,
+  fireflies_last_sync_status: '',
+  otter_enabled: false,
+  otter_method: 'api',
+  otter_api_key: '',
+  otter_api_base_url: 'https://api.otter.ai',
+  otter_mcp_url: '',
+  otter_last_sync_at: null,
+  otter_last_sync_status: ''
 })
 
 const availableModels = ref([])
@@ -452,6 +555,33 @@ const loading = ref(false)
 const isFetchingModels = ref(false)
 const showKey = ref(false)
 const showGeminiKey = ref(false)
+const syncingProvider = ref(null)
+const isSyncingAll = ref(false)
+
+const enabledIntegrationsCount = computed(() => {
+  return ['fathom_enabled', 'fireflies_enabled', 'otter_enabled']
+    .filter((key) => !!settings.value[key])
+    .length
+})
+
+const tabs = computed(() => [
+  { id: 'ai', label: 'AI & Summarization', icon: Sparkles },
+  { id: 'transcription', label: 'Transcription', icon: Mic },
+  {
+    id: 'integrations',
+    label: 'Integrations',
+    icon: Plug,
+    badge: enabledIntegrationsCount.value > 0 ? enabledIntegrationsCount.value : null,
+    badgeClass: 'tab-badge-blue'
+  },
+  {
+    id: 'sync',
+    label: 'Server & Sync',
+    icon: Smartphone,
+    badge: offlineStore.pendingCount > 0 ? offlineStore.pendingCount : null,
+    badgeClass: 'tab-badge-orange'
+  }
+])
 
 const testServerConnection = async () => {
   isTestingServer.value = true
@@ -503,26 +633,113 @@ const fetchSettings = async () => {
       ollama_model: res.data.ollama_model || 'gemma4:12b-mlx',
       gemini_model: res.data.gemini_model || 'gemini-3.8-flash',
       gemini_api_key: res.data.gemini_api_key || '',
-      gemini_api_base: res.data.gemini_api_base || ''
+      gemini_api_base: res.data.gemini_api_base || '',
+      fathom_enabled: !!res.data.fathom_enabled,
+      fathom_method: res.data.fathom_method || 'api',
+      fathom_api_key: res.data.fathom_api_key || '',
+      fathom_mcp_url: res.data.fathom_mcp_url || 'https://api.fathom.ai/mcp',
+      fathom_last_sync_at: res.data.fathom_last_sync_at || null,
+      fathom_last_sync_status: res.data.fathom_last_sync_status || '',
+      fireflies_enabled: !!res.data.fireflies_enabled,
+      fireflies_method: res.data.fireflies_method || 'api',
+      fireflies_api_key: res.data.fireflies_api_key || '',
+      fireflies_mcp_url: res.data.fireflies_mcp_url || 'https://api.fireflies.ai/mcp',
+      fireflies_last_sync_at: res.data.fireflies_last_sync_at || null,
+      fireflies_last_sync_status: res.data.fireflies_last_sync_status || '',
+      otter_enabled: !!res.data.otter_enabled,
+      otter_method: res.data.otter_method || 'api',
+      otter_api_key: res.data.otter_api_key || '',
+      otter_api_base_url: res.data.otter_api_base_url || 'https://api.otter.ai',
+      otter_mcp_url: res.data.otter_mcp_url || '',
+      otter_last_sync_at: res.data.otter_last_sync_at || null,
+      otter_last_sync_status: res.data.otter_last_sync_status || ''
     }
   } catch (e) {
     console.error("Failed to load settings", e)
   }
 }
 
-const saveSettings = async () => {
+const saveSettings = async (silent = false) => {
   loading.value = true
   try {
     if (serverUrl.value !== getApiBaseUrl()) {
       await setApiBaseUrl(serverUrl.value)
     }
     const res = await axios.put('/api/settings', settings.value)
-    settings.value = res.data
-    toast.add({ severity: 'success', summary: 'Saved', detail: 'Settings updated successfully.', life: 3000 })
+    settings.value = {
+      ...settings.value,
+      ...res.data
+    }
+    if (silent !== true) {
+      toast.add({ severity: 'success', summary: 'Saved', detail: 'Settings updated successfully.', life: 3000 })
+    }
+    return true
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to save settings.', life: 5000 })
+    return false
   } finally {
     loading.value = false
+  }
+}
+
+const syncIntegrations = async (provider = 'all') => {
+  const isAll = provider === 'all'
+  if (isAll) {
+    isSyncingAll.value = true
+  } else {
+    syncingProvider.value = provider
+  }
+
+  try {
+    const saved = await saveSettings(true)
+    if (!saved) return
+
+    const res = await axios.post('/api/integrations/sync', { provider })
+    if (res.data?.settings) {
+      settings.value = {
+        ...settings.value,
+        ...res.data.settings
+      }
+    }
+
+    const results = res.data?.results || []
+    if (results.length === 0) {
+      toast.add({
+        severity: 'info',
+        summary: 'No Integrations Enabled',
+        detail: 'Enable at least one integration to run a sync.',
+        life: 3500
+      })
+      return
+    }
+
+    for (const r of results) {
+      if (r.error) {
+        toast.add({
+          severity: 'error',
+          summary: `${r.provider} Sync Failed`,
+          detail: r.error,
+          life: 5000
+        })
+      } else {
+        toast.add({
+          severity: 'success',
+          summary: `${r.provider} Sync Complete`,
+          detail: `Fetched ${r.fetched}: ${r.imported} new, ${r.updated} updated, ${r.skipped} skipped.`,
+          life: 4000
+        })
+      }
+    }
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Sync Error',
+      detail: err.response?.data?.detail || err.message || 'Failed to sync integrations.',
+      life: 5000
+    })
+  } finally {
+    isSyncingAll.value = false
+    syncingProvider.value = null
   }
 }
 
@@ -541,7 +758,7 @@ onMounted(() => {
 }
 
 .page-header {
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
 }
 
 .page-title {
@@ -555,6 +772,78 @@ onMounted(() => {
 .page-subtitle {
   font-size: 0.95rem;
   color: var(--text-secondary);
+}
+
+/* Segmented Tabs Bar */
+.settings-tabs-wrapper {
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.settings-tabs-wrapper::-webkit-scrollbar {
+  display: none;
+}
+
+.segmented-control-macos {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(118, 118, 128, 0.12);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  gap: 4px;
+  min-width: max-content;
+}
+
+.segment-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 1.05rem;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  white-space: nowrap;
+  touch-action: manipulation;
+}
+
+.segment-item:hover {
+  color: var(--text-primary);
+}
+
+.segment-item.active {
+  background: var(--white);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08), 0 1px 1px rgba(0, 0, 0, 0.04);
+}
+
+.segment-item.active .tab-icon {
+  color: var(--apple-blue);
+}
+
+.tab-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.08rem 0.45rem;
+  border-radius: var(--radius-full);
+  line-height: 1.3;
+}
+
+.tab-badge-blue {
+  background: rgba(0, 113, 227, 0.12);
+  color: var(--apple-blue);
+}
+
+.tab-badge-orange {
+  background: rgba(255, 149, 0, 0.16);
+  color: #C25E00;
 }
 
 .settings-card {

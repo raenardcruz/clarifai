@@ -402,6 +402,10 @@ func parseAndSaveSegments(results []interface{}, recording *models.Recording, db
 }
 
 func GenerateSummary(recordingID string, instruction string) {
+	GenerateSummaryWithOptions(recordingID, instruction, false)
+}
+
+func GenerateSummaryWithOptions(recordingID string, instruction string, preserveTitle bool) {
 	db := models.GetDB()
 	var recording models.Recording
 	if err := db.Where("id = ?", recordingID).First(&recording).Error; err != nil {
@@ -435,17 +439,21 @@ func GenerateSummary(recordingID string, instruction string) {
 	recording.Status = "summarizing"
 	db.Save(&recording)
 
-	GenerateSummarySync(recordingID, db, prompt)
+	GenerateSummarySyncWithOptions(recordingID, db, prompt, preserveTitle)
 }
 
 func GenerateSummarySync(recordingID string, db *gorm.DB, prompt string) {
+	GenerateSummarySyncWithOptions(recordingID, db, prompt, false)
+}
+
+func GenerateSummarySyncWithOptions(recordingID string, db *gorm.DB, prompt string, preserveTitle bool) {
 	var recording models.Recording
 	if err := db.Where("id = ?", recordingID).First(&recording).Error; err != nil {
 		return
 	}
 
 	var segments []models.TranscriptSegment
-	db.Where("recording_id = ?", recordingID).Order("start_time asc").Find(&segments)
+	db.Where("recording_id = ?", recordingID).Order("start_time asc, id asc").Find(&segments)
 
 	var fullTextBuilder strings.Builder
 	speakerSet := make(map[string]bool)
@@ -459,9 +467,11 @@ func GenerateSummarySync(recordingID string, db *gorm.DB, prompt string) {
 	}
 	fullText := fullTextBuilder.String()
 
-	aiTitle := GenerateTitleForRecording(fullText, recording.IsMedical)
-	if aiTitle != "" {
-		recording.Title = aiTitle
+	if !preserveTitle {
+		aiTitle := GenerateTitleForRecording(fullText, recording.IsMedical)
+		if aiTitle != "" {
+			recording.Title = aiTitle
+		}
 	}
 
 	var durationStr string

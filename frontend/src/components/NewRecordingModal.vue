@@ -8,11 +8,11 @@
   >
     <div class="apple-modal-body">
       <p class="modal-subtitle">
-        Record audio live with your microphone or import an existing audio/video file.
+        Record audio live with your microphone, import an audio/video file, or add an entire transcript.
       </p>
 
       <!-- Warning Banner if API key not set -->
-      <div v-if="!isKeySet && isOnline" class="apple-warning-banner">
+      <div v-if="!isKeySet && isOnline && activeMode !== 'transcript'" class="apple-warning-banner">
         <AlertTriangle size="18" class="warning-icon" />
         <div class="warning-text">
           <strong>Speechmatics API Key required:</strong>
@@ -27,6 +27,7 @@
             type="button" 
             class="segmented-btn" 
             :class="{ active: activeMode === 'live' }"
+            :disabled="isBusy"
             @click="activeMode = 'live'"
           >
             <Mic size="15" />
@@ -37,10 +38,22 @@
             type="button" 
             class="segmented-btn" 
             :class="{ active: activeMode === 'upload' }"
+            :disabled="isBusy"
             @click="activeMode = 'upload'"
           >
             <UploadCloud size="15" />
             <span>Upload Media</span>
+          </button>
+
+          <button 
+            type="button" 
+            class="segmented-btn" 
+            :class="{ active: activeMode === 'transcript' }"
+            :disabled="isBusy"
+            @click="activeMode = 'transcript'"
+          >
+            <FileText size="15" />
+            <span>Add Transcript</span>
           </button>
         </div>
       </div>
@@ -50,9 +63,9 @@
         class="medical-option-card" 
         :class="{ 
           'is-medical-active': isMedical,
-          'is-disabled': isRecording || isUploading 
+          'is-disabled': isBusy 
         }" 
-        @click="(!isRecording && !isUploading) && (isMedical = !isMedical)"
+        @click="!isBusy && (isMedical = !isMedical)"
       >
         <div class="medical-option-left">
           <div class="medical-icon-badge">
@@ -70,8 +83,8 @@
         </div>
         <div 
           class="apple-toggle-switch" 
-          :class="{ checked: isMedical, disabled: isRecording || isUploading }" 
-          @click.stop="(!isRecording && !isUploading) && (isMedical = !isMedical)"
+          :class="{ checked: isMedical, disabled: isBusy }" 
+          @click.stop="!isBusy && (isMedical = !isMedical)"
         >
           <span class="switch-handle"></span>
         </div>
@@ -83,7 +96,7 @@
         <TagPicker
           v-model="selectedTagIds"
           placeholder="Assign tags..."
-          :disabled="isRecording || isUploading"
+          :disabled="isBusy"
         />
       </div>
 
@@ -136,7 +149,7 @@
       </div>
 
       <!-- Upload Content Mode -->
-      <div v-else class="file-upload-studio">
+      <div v-else-if="activeMode === 'upload'" class="file-upload-studio">
         <div 
           class="apple-dropzone" 
           :class="{ 'dropzone-active': isDragging, 'disabled': !isKeySet }"
@@ -170,6 +183,55 @@
           </div>
         </div>
       </div>
+
+      <!-- Add Entire Transcript Mode -->
+      <div v-else class="transcript-studio">
+        <div class="transcript-title-field">
+          <label for="new-transcript-title" class="transcript-field-label">Title (Optional)</label>
+          <input
+            id="new-transcript-title"
+            v-model="transcriptTitle"
+            type="text"
+            class="transcript-title-input"
+            placeholder="e.g. Q4 Product Sync (auto-generated if left blank with AI summary)"
+            :disabled="isSubmittingTranscript"
+          />
+        </div>
+
+        <TranscriptInputPanel
+          v-model="transcriptText"
+          textarea-id="new-transcript-textarea"
+          :disabled="isSubmittingTranscript"
+          @file-loaded="handleTranscriptFileLoaded"
+        />
+
+        <div class="transcript-submit-footer">
+          <label class="auto-summarize-check">
+            <input
+              type="checkbox"
+              v-model="autoSummarizeTranscript"
+              :disabled="isSubmittingTranscript"
+            />
+            <span>Generate AI Summary immediately</span>
+          </label>
+
+          <button
+            type="button"
+            class="apple-primary-btn transcript-save-btn"
+            :disabled="isSubmittingTranscript || !transcriptText.trim() || !isOnline"
+            @click="submitTranscript"
+          >
+            <Loader2 v-if="isSubmittingTranscript" size="15" class="animate-spin" />
+            <Sparkles v-else-if="autoSummarizeTranscript" size="15" />
+            <FileText v-else size="15" />
+            <span>{{ isSubmittingTranscript ? 'Saving...' : (autoSummarizeTranscript ? 'Save & Summarize' : 'Save Transcript') }}</span>
+          </button>
+        </div>
+
+        <p v-if="!isOnline" class="offline-transcript-hint">
+          An internet connection is required to save transcripts to the server.
+        </p>
+      </div>
       
       <!-- Upload / Stitching Progress Modal Overlay -->
       <div v-if="isUploading" class="upload-progress-panel">
@@ -196,6 +258,8 @@ import { useToast } from 'primevue/usetoast'
 import { 
   Mic, 
   UploadCloud, 
+  FileText,
+  Sparkles,
   Loader2, 
   AlertTriangle, 
   Square, 
@@ -211,6 +275,7 @@ import { useIntervalFn } from '@vueuse/core'
 import { audioRecorder } from '../services/audioRecorder'
 import { useOfflineRecordingsStore } from '../stores/offlineRecordings'
 import TagPicker from './tags/TagPicker.vue'
+import TranscriptInputPanel from './TranscriptInputPanel.vue'
 import { storeToRefs } from 'pinia'
 
 const emit = defineEmits(['close', 'refresh'])
@@ -234,6 +299,13 @@ const recordingTime = ref(0)
 const audioMeterLevel = ref(0.2)
 const isKeySet = ref(true)
 
+const transcriptTitle = ref('')
+const transcriptText = ref('')
+const autoSummarizeTranscript = ref(true)
+const isSubmittingTranscript = ref(false)
+
+const isBusy = computed(() => isRecording.value || isUploading.value || isSubmittingTranscript.value)
+
 const CHUNK_SIZE = 5 * 1024 * 1024 // 5 MB chunks
 const MAX_CONCURRENT_UPLOADS = 3 // Concurrency limit
 
@@ -246,9 +318,57 @@ const checkApiKey = async () => {
   try {
     const res = await axios.get('/api/settings')
     isKeySet.value = !!res.data.speechmatics_api_key
+    if (res.data.ai_summarization_mode) {
+      autoSummarizeTranscript.value = res.data.ai_summarization_mode === 'auto'
+    }
   } catch (e) {
     console.error("Failed to fetch settings keys", e)
     isKeySet.value = true // Don't block offline recording
+  }
+}
+
+const handleTranscriptFileLoaded = ({ suggestedTitle }) => {
+  if (!transcriptTitle.value.trim() && suggestedTitle) {
+    transcriptTitle.value = suggestedTitle
+  }
+}
+
+const submitTranscript = async () => {
+  const trimmed = transcriptText.value.trim()
+  if (!trimmed || isSubmittingTranscript.value) return
+
+  isSubmittingTranscript.value = true
+  try {
+    const res = await axios.post('/api/recordings/transcript', {
+      title: transcriptTitle.value.trim(),
+      transcript: trimmed,
+      is_medical: isMedical.value,
+      tag_ids: selectedTagIds.value,
+      auto_summarize: autoSummarizeTranscript.value,
+    })
+
+    toast.add({
+      severity: 'success',
+      summary: 'Transcript Added',
+      detail: autoSummarizeTranscript.value
+        ? 'Transcript saved and AI summarization started.'
+        : 'Entire transcript saved successfully.',
+      life: 4000,
+    })
+
+    emit('refresh')
+    emit('close')
+    router.push(`/recordings/${res.data.job_id}`)
+  } catch (error) {
+    console.error('Failed to save transcript', error)
+    toast.add({
+      severity: 'error',
+      summary: 'Save Failed',
+      detail: error.response?.data?.detail || 'Could not save transcript.',
+      life: 5000,
+    })
+  } finally {
+    isSubmittingTranscript.value = false
   }
 }
 
@@ -707,6 +827,8 @@ const uploadFile = async (file) => {
 
 .segmented-control {
   display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
   background: rgba(118, 118, 128, 0.12);
   padding: 3px;
   border-radius: var(--radius-full);
@@ -717,7 +839,7 @@ const uploadFile = async (file) => {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  padding: 0.5rem 1.25rem;
+  padding: 0.5rem 1.05rem;
   border-radius: var(--radius-full);
   font-size: 0.85rem;
   font-weight: 500;
@@ -726,6 +848,12 @@ const uploadFile = async (file) => {
   background: transparent;
   cursor: pointer;
   transition: var(--transition-fast);
+  white-space: nowrap;
+}
+
+.segmented-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .segmented-btn.active {
@@ -1100,11 +1228,91 @@ const uploadFile = async (file) => {
   border-radius: 12px;
   background: #f8fafc;
   border: 1px solid rgba(0, 0, 0, 0.06);
+  margin-bottom: 1.25rem;
 }
 
 .modal-tags-label {
   font-size: 0.76rem;
   font-weight: 600;
   color: #475569;
+}
+
+/* Add Entire Transcript Mode */
+.transcript-studio {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.transcript-title-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.transcript-field-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.transcript-title-input {
+  width: 100%;
+  padding: 0.62rem 0.9rem;
+  border-radius: var(--radius-md, 10px);
+  border: 1.5px solid rgba(0, 0, 0, 0.12);
+  background: var(--bg-primary, #f8fafc);
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  font-family: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-sizing: border-box;
+}
+
+.transcript-title-input:focus {
+  outline: none;
+  border-color: var(--apple-blue, #0071e3);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.14);
+  background: var(--white, #ffffff);
+}
+
+.transcript-submit-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding-top: 0.25rem;
+}
+
+.auto-summarize-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.auto-summarize-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--apple-blue, #0071e3);
+  cursor: pointer;
+}
+
+.transcript-save-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.offline-transcript-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #b45309;
+  font-weight: 500;
 }
 </style>
