@@ -32,45 +32,60 @@
     </div>
 
     <!-- Apple Metric Widgets Grid -->
-    <div class="stats-grid">
-      <div class="stat-card" v-if="stats">
-        <div class="stat-icon-wrapper bg-blue-subtle text-blue">
-          <Mic size="22" stroke-width="2.2" />
-        </div>
-        <div class="stat-info">
-          <span class="stat-label">TOTAL RECORDINGS</span>
-          <div class="stat-value-row">
-            <h2 class="stat-value">{{ stats.total_recordings }}</h2>
-            <span class="stat-trend">Captured</span>
+    <div class="stats-grid" :aria-busy="isInitialLoading">
+      <template v-if="isInitialLoading">
+        <div v-for="n in 3" :key="`stat-skel-${n}`" class="stat-card stat-card-skeleton" aria-hidden="true">
+          <span class="skeleton-shimmer-subtle stat-skel-icon"></span>
+          <div class="stat-info stat-skel-info">
+            <span class="skeleton-shimmer stat-skel-label" :style="{ width: n === 2 ? '118px' : '98px' }"></span>
+            <div class="stat-value-row stat-skel-val-row">
+              <span class="skeleton-shimmer stat-skel-value"></span>
+              <span class="skeleton-shimmer stat-skel-trend"></span>
+            </div>
           </div>
         </div>
-      </div>
-      
-      <div class="stat-card" v-if="stats">
-        <div class="stat-icon-wrapper bg-purple-subtle text-purple">
-          <Sparkles size="22" stroke-width="2.2" />
-        </div>
-        <div class="stat-info">
-          <span class="stat-label">INSIGHTS GENERATED</span>
-          <div class="stat-value-row">
-            <h2 class="stat-value">{{ stats.insights_generated }}</h2>
-            <span class="stat-trend text-purple-trend">AI Summaries</span>
+      </template>
+
+      <template v-else-if="stats">
+        <div class="stat-card fade-in-content">
+          <div class="stat-icon-wrapper bg-blue-subtle text-blue">
+            <Mic size="22" stroke-width="2.2" />
+          </div>
+          <div class="stat-info">
+            <span class="stat-label">TOTAL RECORDINGS</span>
+            <div class="stat-value-row">
+              <h2 class="stat-value">{{ stats.total_recordings }}</h2>
+              <span class="stat-trend">Captured</span>
+            </div>
           </div>
         </div>
-      </div>
-      
-      <div class="stat-card" v-if="stats">
-        <div class="stat-icon-wrapper bg-teal-subtle text-teal">
-          <Clock size="22" stroke-width="2.2" />
-        </div>
-        <div class="stat-info">
-          <span class="stat-label">HOURS SAVED</span>
-          <div class="stat-value-row">
-            <h2 class="stat-value">{{ stats.total_hours }}</h2>
-            <span class="stat-trend">Review time</span>
+        
+        <div class="stat-card fade-in-content">
+          <div class="stat-icon-wrapper bg-purple-subtle text-purple">
+            <Sparkles size="22" stroke-width="2.2" />
+          </div>
+          <div class="stat-info">
+            <span class="stat-label">INSIGHTS GENERATED</span>
+            <div class="stat-value-row">
+              <h2 class="stat-value">{{ stats.insights_generated }}</h2>
+              <span class="stat-trend text-purple-trend">AI Summaries</span>
+            </div>
           </div>
         </div>
-      </div>
+        
+        <div class="stat-card fade-in-content">
+          <div class="stat-icon-wrapper bg-teal-subtle text-teal">
+            <Clock size="22" stroke-width="2.2" />
+          </div>
+          <div class="stat-info">
+            <span class="stat-label">HOURS SAVED</span>
+            <div class="stat-value-row">
+              <h2 class="stat-value">{{ stats.total_hours }}</h2>
+              <span class="stat-trend">Review time</span>
+            </div>
+          </div>
+        </div>
+      </template>
 
       <SpeechmaticsUsage type="card" />
     </div>
@@ -90,14 +105,37 @@
       </div>
     </div>
 
+    <!-- Error Fallback Banner -->
+    <div v-if="loadError && !hasLoaded" class="dashboard-error-banner fade-in-content">
+      <div class="error-banner-text">
+        <strong>Couldn't load recent recordings</strong>
+        <span>Check your connection and try refreshing your dashboard.</span>
+      </div>
+      <button type="button" class="retry-pill-btn" @click="fetchData">
+        <RefreshCw size="14" :class="{ 'animate-spin': loading }" />
+        <span>Retry</span>
+      </button>
+    </div>
+
     <!-- Recordings Grid -->
-    <div class="grid grid-cols-3">
-      <RecordingCard 
-        v-for="recording in recordings" 
-        :key="recording.id" 
-        :recording="recording" 
-        @refresh="fetchData"
-      />
+    <div class="grid grid-cols-3" :aria-busy="isInitialLoading">
+      <template v-if="isInitialLoading">
+        <RecordingCardSkeleton
+          v-for="n in 5"
+          :key="`rec-skel-${n}`"
+          :variant="n - 1"
+        />
+      </template>
+
+      <template v-else>
+        <RecordingCard 
+          v-for="recording in recordings" 
+          :key="recording.id" 
+          :recording="recording" 
+          class="fade-in-content"
+          @refresh="fetchData"
+        />
+      </template>
       
       <div class="apple-create-card group" @click="isRecordingModalOpen = true">
         <div class="create-icon-ring">
@@ -116,24 +154,43 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
-import { Mic, Sparkles, Clock, Plus, UploadCloud, ArrowRight } from '@lucide/vue'
+import { Mic, Sparkles, Clock, Plus, ArrowRight, RefreshCw } from '@lucide/vue'
 import RecordingCard from '../components/RecordingCard.vue'
+import RecordingCardSkeleton from '../components/skeletons/RecordingCardSkeleton.vue'
 import NewRecordingModal from '../components/NewRecordingModal.vue'
 import SpeechmaticsUsage from '../components/SpeechmaticsUsage.vue'
+import { useLoadingStore } from '../stores/loading'
 
+const loadingStore = useLoadingStore()
 const recordings = ref([])
 const stats = ref(null)
+const loading = ref(true)
+const hasLoaded = ref(false)
+const loadError = ref(false)
 const isRecordingModalOpen = ref(false)
 
+const isInitialLoading = computed(() => loading.value && !hasLoaded.value)
+
 const fetchData = async () => {
+  const showProgress = !hasLoaded.value
+  loading.value = true
+  loadError.value = false
+  if (showProgress) loadingStore.startTask()
   try {
     const res = await axios.get('/api/recordings/recent')
-    recordings.value = res.data.recordings
+    recordings.value = res.data.recordings || []
     stats.value = res.data.statistics
+    hasLoaded.value = true
   } catch (e) {
     console.error("Failed to fetch dashboard data", e)
+    if (!hasLoaded.value) {
+      loadError.value = true
+    }
+  } finally {
+    loading.value = false
+    if (showProgress) loadingStore.finishTask()
   }
 }
 
@@ -470,6 +527,109 @@ onMounted(() => {
   line-height: 1.45;
 }
 
+/* Dashboard Stat Card Skeletons */
+.stat-card-skeleton {
+  pointer-events: none;
+  min-height: 145px;
+}
+
+.stat-card-skeleton:hover {
+  transform: none;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.02);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.stat-skel-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+.stat-skel-info {
+  flex: 1;
+  gap: 0.5rem;
+}
+
+.stat-skel-label {
+  height: 10px;
+  border-radius: 4px;
+}
+
+.stat-skel-val-row {
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.stat-skel-value {
+  width: 56px;
+  height: 28px;
+  border-radius: 7px;
+}
+
+.stat-skel-trend {
+  width: 58px;
+  height: 12px;
+  border-radius: 4px;
+}
+
+/* Error Fallback Banner */
+.dashboard-error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background: var(--bg-secondary);
+  border: 1px solid rgba(255, 59, 48, 0.18);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.35rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow-xs);
+}
+
+.error-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.error-banner-text strong {
+  font-size: 0.92rem;
+  color: var(--text-primary);
+}
+
+.error-banner-text span {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.retry-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: var(--apple-blue);
+  color: #FFFFFF;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-full);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.retry-pill-btn:hover {
+  background: var(--apple-blue-hover);
+  transform: translateY(-1px);
+}
+
+@media (max-width: 1100px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 992px) {
   .apple-hero-section {
     padding: 2.5rem 2rem;
@@ -503,6 +663,10 @@ onMounted(() => {
     grid-template-columns: 1fr;
     gap: 1rem;
     margin-bottom: 2rem;
+  }
+
+  .stat-card-skeleton {
+    min-height: 86px;
   }
 }
 </style>

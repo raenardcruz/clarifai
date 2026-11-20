@@ -1,5 +1,40 @@
 <template>
-  <div v-if="usageData" :class="['speechmatics-usage-container', type]">
+  <!-- Loading Skeleton State -->
+  <div v-if="loading" :class="['speechmatics-usage-container', type]" aria-hidden="true">
+    <div v-if="type === 'card'" class="apple-usage-widget usage-skeleton-card">
+      <div class="widget-header">
+        <span class="skeleton-shimmer-subtle usage-skel-icon"></span>
+        <div class="header-info usage-skel-info">
+          <span class="skeleton-shimmer usage-skel-label"></span>
+          <span class="skeleton-shimmer usage-skel-value"></span>
+        </div>
+      </div>
+
+      <div class="progress-section">
+        <span class="skeleton-shimmer skeleton-pill usage-skel-track"></span>
+        <div class="progress-footer-stats">
+          <span class="skeleton-shimmer-subtle skeleton-pill usage-skel-pill"></span>
+          <span class="skeleton-shimmer usage-skel-rem"></span>
+        </div>
+      </div>
+    </div>
+
+    <div v-else class="apple-usage-dock">
+      <div class="dock-content">
+        <div class="dock-left">
+          <span class="skeleton-shimmer-subtle skeleton-circle" style="width: 22px; height: 22px;"></span>
+          <span class="skeleton-shimmer" style="width: 190px; height: 13px;"></span>
+          <span class="skeleton-shimmer" style="width: 140px; height: 12px;"></span>
+        </div>
+        <div class="dock-right">
+          <span class="skeleton-shimmer skeleton-pill" style="width: 140px; height: 6px;"></span>
+          <span class="skeleton-shimmer" style="width: 84px; height: 12px;"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div v-else-if="usageData" :class="['speechmatics-usage-container fade-in-content', type]">
     <!-- Card Mode (Dashboard Widget) -->
     <div v-if="type === 'card'" class="apple-usage-widget">
       <div class="widget-header">
@@ -100,13 +135,17 @@ const props = defineProps({
 })
 
 const usageData = ref(null)
+const loading = ref(true)
 
 const fetchUsage = async () => {
+  loading.value = true
   try {
     const res = await axios.get('/api/recordings/speechmatics-usage')
     usageData.value = res.data
   } catch (e) {
     console.error("Failed to fetch Speechmatics usage details:", e)
+  } finally {
+    loading.value = false
   }
 }
 
@@ -393,5 +432,52 @@ onMounted(() => {
     flex: 1;
     max-width: 200px;
   }
+}
+
+.usage-skeleton-card {
+  pointer-events: none;
+}
+
+.usage-skeleton-card:hover {
+  transform: none;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.02);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.usage-skel-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+.usage-skel-info {
+  gap: 0.4rem;
+}
+
+.usage-skel-label {
+  width: 48px;
+  height: 10px;
+}
+
+.usage-skel-value {
+  width: 96px;
+  height: 22px;
+  border-radius: 6px;
+}
+
+.usage-skel-track {
+  width: 100%;
+  height: 7px;
+}
+
+.usage-skel-pill {
+  width: 66px;
+  height: 18px;
+}
+
+.usage-skel-rem {
+  width: 62px;
+  height: 12px;
 }
 </style>

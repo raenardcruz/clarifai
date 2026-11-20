@@ -243,10 +243,16 @@
         </div>
       </div>
 
-      <!-- Loading State -->
-      <div v-if="loading" class="loading-state">
-        <Loader2 class="animate-spin text-blue" size="36" />
-        <span class="loading-text">Loading recordings...</span>
+      <!-- Skeletal Loading State -->
+      <div v-if="loading" aria-busy="true" aria-label="Loading recordings">
+        <div v-if="viewMode === 'grid'" class="grid grid-cols-4">
+          <RecordingCardSkeleton
+            v-for="n in 8"
+            :key="`all-rec-skel-${n}`"
+            :variant="n - 1"
+          />
+        </div>
+        <RecordingListSkeleton v-else :rows="6" />
       </div>
       
       <!-- Empty State -->
@@ -472,6 +478,8 @@ import axios from 'axios'
 import moment from 'moment'
 import { Loader2, Mic, Plus, LayoutGrid, List, ChevronRight, Stethoscope, HardDrive, RefreshCw, Trash2, Tag as TagIcon, CheckSquare, Share2 } from '@lucide/vue'
 import RecordingCard from '../components/RecordingCard.vue'
+import RecordingCardSkeleton from '../components/skeletons/RecordingCardSkeleton.vue'
+import RecordingListSkeleton from '../components/skeletons/RecordingListSkeleton.vue'
 import OfflineRecordingCard from '../components/OfflineRecordingCard.vue'
 import NewRecordingModal from '../components/NewRecordingModal.vue'
 import SpeechmaticsUsage from '../components/SpeechmaticsUsage.vue'
@@ -479,6 +487,7 @@ import TagPicker from '../components/tags/TagPicker.vue'
 import SourceBadge from '../components/SourceBadge.vue'
 import { useOfflineRecordingsStore } from '../stores/offlineRecordings'
 import { useTagsStore } from '../stores/tags'
+import { useLoadingStore } from '../stores/loading'
 import { getPublicBaseUrl } from '../services/apiConfig'
 import { extractSummaryPreview } from '../utils/summary'
 
@@ -487,6 +496,7 @@ const router = useRouter()
 const toast = useToast()
 const offlineStore = useOfflineRecordingsStore()
 const tagsStore = useTagsStore()
+const loadingStore = useLoadingStore()
 const recordings = ref([])
 const loading = ref(true)
 const isRecordingModalOpen = ref(false)
@@ -623,6 +633,7 @@ const handleClearAllOffline = async () => {
 
 const fetchRecordings = async () => {
   loading.value = true
+  loadingStore.startTask()
   try {
     const params = {
       search: route.query.search || undefined,
@@ -645,6 +656,7 @@ const fetchRecordings = async () => {
     }
   } finally {
     loading.value = false
+    loadingStore.finishTask()
   }
 }
 

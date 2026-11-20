@@ -502,11 +502,8 @@
     </div>
   </div>
 
-  <!-- Loading Full Page -->
-  <div v-else class="full-page-loader">
-    <Loader2 class="animate-spin text-blue" size="44" />
-    <span class="loader-label">Loading recording...</span>
-  </div>
+  <!-- Loading Full Page Skeleton -->
+  <RecordingDetailSkeleton v-else />
 </template>
 
 <script setup>
@@ -528,7 +525,9 @@ import SummaryRenderer from '../components/SummaryRenderer.vue'
 import SourceBadge from '../components/SourceBadge.vue'
 import TagPicker from '../components/tags/TagPicker.vue'
 import TranscriptInputPanel from '../components/TranscriptInputPanel.vue'
+import RecordingDetailSkeleton from '../components/skeletons/RecordingDetailSkeleton.vue'
 import { useTagsStore } from '../stores/tags'
+import { useLoadingStore } from '../stores/loading'
 import { getPublicBaseUrl } from '../services/apiConfig'
 import { countSummaryWords, extractSummaryText, isHtmlSummary } from '../utils/summary'
 import { getSourceMeta } from '../utils/sources'
@@ -545,6 +544,7 @@ const isIosApp = computed(() => {
 
 const recording = ref(null)
 const tagsStore = useTagsStore()
+const loadingStore = useLoadingStore()
 
 const sourceMeta = computed(() => getSourceMeta(recording.value?.source))
 const sourceLabel = computed(() => sourceMeta.value.label)
@@ -780,6 +780,8 @@ const stopPolling = () => { pause() }
 
 const fetchData = async () => {
   loadError.value = null
+  const trackProgress = !recording.value
+  if (trackProgress) loadingStore.startTask()
   try {
     const res = await axios.get(`/api/recordings/${route.params.id}`)
     recording.value = res.data
@@ -794,6 +796,8 @@ const fetchData = async () => {
     console.error("Failed to load recording", e)
     loadError.value = e.response?.data?.detail || e.message || 'Recording not found'
     toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load recording. Please check connection or try again.', life: 5000 })
+  } finally {
+    if (trackProgress) loadingStore.finishTask()
   }
 }
 
