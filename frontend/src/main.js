@@ -27,6 +27,17 @@ app.use(PrimeVue, {
 })
 app.use(ToastService)
 
+function dismissBootLoader() {
+  const loader = document.getElementById('app-boot-loader')
+  if (!loader) return
+  requestAnimationFrame(() => {
+    loader.classList.add('is-hidden')
+    setTimeout(() => {
+      loader.remove()
+    }, 300)
+  })
+}
+
 async function startApp() {
   try {
     await initApiConfig()
@@ -38,6 +49,14 @@ async function startApp() {
   offlineStore.init()
 
   app.mount('#app')
+
+  try {
+    await router.isReady()
+  } catch (err) {
+    console.error('Router readiness error:', err)
+  } finally {
+    dismissBootLoader()
+  }
 }
 
 startApp()

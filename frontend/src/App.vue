@@ -1,5 +1,6 @@
 <template>
   <div class="app-container">
+    <TopProgressBar />
     <Toast />
     <Sidebar v-if="authStore.isAuthenticated && showNavigation" />
     <div 
@@ -23,6 +24,7 @@ import { useAuthStore } from './stores/auth'
 import { isSidebarOpen, closeSidebar } from './stores/layout'
 import Sidebar from './components/Sidebar.vue'
 import Topbar from './components/Topbar.vue'
+import TopProgressBar from './components/TopProgressBar.vue'
 import Toast from 'primevue/toast'
 
 const route = useRoute()

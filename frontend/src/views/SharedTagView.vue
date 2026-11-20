@@ -177,10 +177,11 @@
   </div>
 
   <!-- Loading State -->
-  <div v-else class="full-page-loader">
-    <Loader2 class="animate-spin text-blue" size="44" />
-    <span class="loader-label">Loading shared collection...</span>
-  </div>
+  <AppLoadingScreen
+    v-else
+    title="Loading Shared Collection"
+    subtitle="Fetching meeting summaries and insights..."
+  />
 </template>
 
 <script setup>
@@ -193,12 +194,12 @@ import { useToast } from 'primevue/usetoast'
 import { useTitle } from '@vueuse/core'
 import SummaryRenderer from '../components/SummaryRenderer.vue'
 import SourceBadge from '../components/SourceBadge.vue'
+import AppLoadingScreen from '../components/AppLoadingScreen.vue'
 import { extractSummaryText } from '../utils/summary'
 import {
   Sparkles,
   Calendar,
   Clock,
-  Loader2,
   Printer,
   Copy,
   Check,

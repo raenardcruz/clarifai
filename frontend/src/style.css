@@ -507,6 +507,84 @@ a:hover {
   50% { height: 22px; }
 }
 
+/* Apple Skeletal Shimmer Primitives */
+@keyframes appleSkeletonShimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes appleContentFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.skeleton-shimmer {
+  position: relative;
+  display: block;
+  background: linear-gradient(
+    90deg,
+    #EAEAEF 0%,
+    #EAEAEF 35%,
+    #F7F7FA 50%,
+    #EAEAEF 65%,
+    #EAEAEF 100%
+  );
+  background-size: 220% 100%;
+  animation: appleSkeletonShimmer 1.55s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  border-radius: var(--radius-xs);
+}
+
+.skeleton-shimmer-subtle {
+  position: relative;
+  display: block;
+  background: linear-gradient(
+    90deg,
+    rgba(0, 113, 227, 0.06) 0%,
+    rgba(0, 113, 227, 0.06) 35%,
+    rgba(0, 113, 227, 0.13) 50%,
+    rgba(0, 113, 227, 0.06) 65%,
+    rgba(0, 113, 227, 0.06) 100%
+  );
+  background-size: 220% 100%;
+  animation: appleSkeletonShimmer 1.55s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  border-radius: var(--radius-xs);
+}
+
+.skeleton-circle {
+  border-radius: var(--radius-full);
+}
+
+.skeleton-pill {
+  border-radius: var(--radius-full);
+}
+
+.fade-in-content {
+  animation: appleContentFadeIn 0.28s var(--apple-ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer,
+  .skeleton-shimmer-subtle {
+    animation: none;
+    background: #EAEAEF;
+  }
+
+  .fade-in-content {
+    animation: none;
+  }
+}
+
+
 /* PrimeVue Component Polish */
 .p-button {
   font-family: var(--font-headline) !important;
@@ -606,6 +684,8 @@ a:hover {
   .sidebar-backdrop,
   .speechmatics-usage-footer,
   .no-print,
+  .top-progress-bar,
+  #app-boot-loader,
   .p-toast,
   .p-dialog,
   button,

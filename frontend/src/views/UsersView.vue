@@ -5,7 +5,10 @@
         <h1 class="page-title">User Management</h1>
         <p class="page-subtitle">Review registrations, manage authorization roles, and set transcription allowances</p>
       </div>
-      <div class="user-count-chip">
+      <div class="user-count-chip" v-if="loading && users.length === 0" aria-hidden="true">
+        <span class="skeleton-shimmer" style="width: 78px; height: 14px;"></span>
+      </div>
+      <div class="user-count-chip fade-in-content" v-else>
         <Users size="15" />
         <span>{{ users.length }} {{ users.length === 1 ? 'Account' : 'Accounts' }}</span>
       </div>
@@ -13,7 +16,30 @@
 
     <!-- Apple Table Card -->
     <div class="users-card">
-      <div class="apple-table-wrapper">
+      <div v-if="loading && users.length === 0" class="users-skeleton-table" aria-busy="true" aria-label="Loading users">
+        <div class="users-skel-header">
+          <span>USER</span>
+          <span>ROLE</span>
+          <span>STATUS</span>
+          <span>QUOTA (HRS)</span>
+          <span>ACTIONS</span>
+        </div>
+        <div v-for="n in 4" :key="`user-skel-${n}`" class="users-skel-row">
+          <div class="users-skel-user-cell">
+            <span class="skeleton-shimmer skeleton-circle" style="width: 34px; height: 34px; flex-shrink: 0;"></span>
+            <span class="skeleton-shimmer" :style="{ width: n % 2 === 0 ? '150px' : '185px', height: '13px' }"></span>
+          </div>
+          <span class="skeleton-shimmer" style="width: 96px; height: 32px; border-radius: 10px;"></span>
+          <span class="skeleton-shimmer skeleton-pill" style="width: 82px; height: 24px;"></span>
+          <span class="skeleton-shimmer" style="width: 86px; height: 30px; border-radius: 10px;"></span>
+          <div class="users-skel-actions">
+            <span class="skeleton-shimmer skeleton-pill" style="width: 64px; height: 28px;"></span>
+            <span class="skeleton-shimmer skeleton-circle" style="width: 28px; height: 28px;"></span>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="apple-table-wrapper fade-in-content">
         <DataTable :value="users" class="apple-datatable" responsiveLayout="scroll">
           <!-- User / Email Column -->
           <Column header="USER">
@@ -117,8 +143,11 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Select from 'primevue/select'
 import { Users, Check, Trash2 } from '@lucide/vue'
+import { useLoadingStore } from '../stores/loading'
 
+const loadingStore = useLoadingStore()
 const users = ref([])
+const loading = ref(true)
 const toast = useToast()
 
 const roleOptions = ref([
@@ -127,11 +156,17 @@ const roleOptions = ref([
 ])
 
 const fetchUsers = async () => {
+  const showProgress = users.value.length === 0
+  loading.value = true
+  if (showProgress) loadingStore.startTask()
   try {
     const res = await axios.get('/api/users')
     users.value = res.data
   } catch (e) {
     console.error("Failed to load users", e)
+  } finally {
+    loading.value = false
+    if (showProgress) loadingStore.finishTask()
   }
 }
 
@@ -422,5 +457,50 @@ onMounted(() => {
 
 :deep(.p-datatable-tbody > tr:hover) {
   background: rgba(0, 113, 227, 0.02) !important;
+}
+
+.users-skeleton-table {
+  display: flex;
+  flex-direction: column;
+  overflow-x: auto;
+}
+
+.users-skel-header {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) 130px 120px 130px 130px;
+  align-items: center;
+  padding: 0.85rem 1.25rem;
+  background: rgba(0, 0, 0, 0.02);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  min-width: 720px;
+}
+
+.users-skel-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) 130px 120px 130px 130px;
+  align-items: center;
+  padding: 0.9rem 1.25rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  min-width: 720px;
+}
+
+.users-skel-row:last-child {
+  border-bottom: none;
+}
+
+.users-skel-user-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.users-skel-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 </style>

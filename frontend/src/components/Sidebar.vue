@@ -63,7 +63,14 @@
         </div>
 
         <div v-if="isTagsSectionOpen" class="tags-tree-container">
-          <div v-if="tagsStore.tree.length === 0" class="tags-empty-hint" @click="openTagManager(null, null)">
+          <div v-if="tagsStore.loading && tagsStore.tree.length === 0" class="tags-skeleton-list" aria-hidden="true">
+            <div v-for="w in ['68%', '54%', '74%']" :key="w" class="tag-skel-row">
+              <span class="skeleton-shimmer skeleton-circle tag-skel-dot"></span>
+              <span class="skeleton-shimmer tag-skel-name" :style="{ width: w }"></span>
+            </div>
+          </div>
+
+          <div v-else-if="tagsStore.tree.length === 0" class="tags-empty-hint" @click="openTagManager(null, null)">
             + Create your first tag
           </div>
 
@@ -687,6 +694,30 @@ const handleShareTag = async (tag) => {
   background: rgba(0, 0, 0, 0.05);
   padding: 0.08rem 0.4rem;
   border-radius: 9999px;
+}
+
+.tags-skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.4rem 0.75rem 0.4rem 1.85rem;
+}
+
+.tag-skel-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tag-skel-dot {
+  width: 9px;
+  height: 9px;
+  flex-shrink: 0;
+}
+
+.tag-skel-name {
+  height: 11px;
+  border-radius: 4px;
 }
 
 @media (max-width: 768px) {

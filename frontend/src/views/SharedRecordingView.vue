@@ -82,10 +82,7 @@
   </div>
 
   <!-- Loading State -->
-  <div v-else class="full-page-loader">
-    <Loader2 class="animate-spin text-blue" size="44" />
-    <span class="loader-label">Loading shared insight...</span>
-  </div>
+  <RecordingDetailSkeleton v-else shared />
 </template>
 
 <script setup>
@@ -95,10 +92,11 @@ import { Capacitor } from '@capacitor/core'
 import axios from 'axios'
 import moment from 'moment'
 import { useToast } from 'primevue/usetoast'
-import { Calendar, Clock, Sparkles, Loader2, Printer, Copy, Check, Stethoscope } from '@lucide/vue'
+import { Calendar, Clock, Sparkles, Printer, Copy, Check, Stethoscope } from '@lucide/vue'
 import { useTitle } from '@vueuse/core'
 import SummaryRenderer from '../components/SummaryRenderer.vue'
 import SourceBadge from '../components/SourceBadge.vue'
+import RecordingDetailSkeleton from '../components/skeletons/RecordingDetailSkeleton.vue'
 import { extractSummaryText } from '../utils/summary'
 
 const summaryRendererRef = ref(null)
